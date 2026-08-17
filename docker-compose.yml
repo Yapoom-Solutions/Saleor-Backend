@@ -1,6 +1,8 @@
 services:
   api:
-    image: ghcr.io/saleor/saleor:3.23
+    build:
+      context: ./saleor
+      dockerfile: Dockerfile
     ports:
       - 8000:8000
     restart: unless-stopped
@@ -20,13 +22,27 @@ services:
       - backend.env
     environment:
       - DASHBOARD_URL=http://localhost:9000/
-      - ALLOWED_HOSTS=localhost,127.0.0.1,api
+      - ALLOWED_HOSTS=localhost,127.0.0.1,api,.localhost
 
   dashboard:
     image: ghcr.io/saleor/saleor-dashboard:3.23
     ports:
       - 9000:80
     restart: unless-stopped
+    volumes:
+      - ./index.html:/app/dashboard/index.html:ro
+
+  razorpay-app:
+    build:
+      context: ./apps/payments/razorpay
+      dockerfile: Dockerfile
+    ports:
+      - 8080:8080
+    restart: unless-stopped
+    networks:
+      - saleor-backend-tier
+    volumes:
+      - saleor-razorpay-app-db:/app/data
 
   db:
     image: library/postgres:15-alpine
@@ -53,7 +69,9 @@ services:
       - saleor-cache:/data
 
   worker:
-    image: ghcr.io/saleor/saleor:3.23
+    build:
+      context: ./saleor
+      dockerfile: Dockerfile
     command: celery -A saleor --app=saleor.celeryconf:app worker --loglevel=info -B
     restart: unless-stopped
     networks:
@@ -96,6 +114,7 @@ volumes:
   saleor-cache:
     driver: local
   saleor-media:
+  saleor-razorpay-app-db:
 
 networks:
   saleor-backend-tier:

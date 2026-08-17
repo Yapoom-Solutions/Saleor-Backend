@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Razorpay Payment Configuration</title>
+  <!-- Google Fonts: Outfit -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Outfit', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #f3f4f6;
+    }
+    .glass-card {
+      background: rgba(17, 24, 39, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6 font-sans">
+
+  <div class="w-full max-w-lg glass-card rounded-2xl shadow-2xl p-8 transition-transform duration-300 hover:scale-[1.01]">
+    
+    <!-- Header -->
+    <div class="flex items-center space-x-4 mb-8">
+      <div class="h-12 w-12 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+        <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-2xl font-bold text-white tracking-wide">Razorpay Integration</h1>
+        <p class="text-sm text-gray-400">Configure your payment gateway settings below</p>
+      </div>
+    </div>
+
+    <!-- Active Domain Notice -->
+    <div class="mb-6 p-4 bg-indigo-950/40 border border-indigo-500/20 rounded-xl flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <div class="h-2.5 w-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
+        <span class="text-xs font-semibold text-indigo-300 uppercase tracking-wider">Active Tenant</span>
+      </div>
+      <span id="active-domain" class="text-sm font-medium text-gray-300">Loading...</span>
+    </div>
+
+    <!-- Form -->
+    <form id="config-form" class="space-y-6">
+      
+      <!-- Key ID -->
+      <div>
+        <label for="key-id" class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Razorpay Key ID</label>
+        <input type="text" id="key-id" required
+          class="w-full bg-[#161b26] border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-indigo-500 transition-colors placeholder-gray-600"
+          placeholder="rzp_test_..." />
+      </div>
+
+      <!-- Key Secret -->
+      <div>
+        <label for="key-secret" class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Razorpay Key Secret</label>
+        <input type="password" id="key-secret" required
+          class="w-full bg-[#161b26] border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-indigo-500 transition-colors placeholder-gray-600"
+          placeholder="••••••••••••••••" />
+      </div>
+
+      <!-- Webhook Secret -->
+      <div>
+        <label for="webhook-secret" class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Webhook Secret Signature</label>
+        <input type="text" id="webhook-secret" required
+          class="w-full bg-[#161b26] border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-indigo-500 transition-colors placeholder-gray-600"
+          placeholder="Your webhook verification signature" />
+      </div>
+
+      <!-- Submit Button -->
+      <button type="submit" id="submit-btn"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 rounded-xl transition-all shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/50 flex items-center justify-center space-x-2">
+        <span>Save Configuration</span>
+      </button>
+
+    </form>
+
+    <!-- Success Modal/Toast -->
+    <div id="toast" class="hidden mt-6 p-4 bg-emerald-950/50 border border-emerald-500/20 text-emerald-300 text-sm rounded-xl text-center">
+      Settings saved successfully!
+    </div>
+
+  </div>
+
+  <script>
+    // Extract domain from query parameters passed by Saleor Dashboard iframe
+    const urlParams = new URLSearchParams(window.location.search);
+    const domain = urlParams.get('domain') || window.location.hostname;
+    document.getElementById('active-domain').textContent = domain;
+
+    // Load existing settings
+    async function loadSettings() {
+      try {
+        const response = await fetch(`/api/configuration?domain=${encodeURIComponent(domain)}`);
+        if (response.ok) {
+          const data = await response.json();
+          document.getElementById('key-id').value = data.razorpay_key_id || '';
+          document.getElementById('key-secret').value = data.razorpay_key_secret || '';
+          document.getElementById('webhook-secret').value = data.razorpay_webhook_secret || '';
+        }
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      }
+    }
+
+    // Submit handler
+    document.getElementById('config-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const submitBtn = document.getElementById('submit-btn');
+      const toast = document.getElementById('toast');
+      
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Saving...';
+      toast.classList.add('hidden');
+
+      const payload = {
+        domain: domain,
+        razorpay_key_id: document.getElementById('key-id').value,
+        razorpay_key_secret: document.getElementById('key-secret').value,
+        razorpay_webhook_secret: document.getElementById('webhook-secret').value
+      };
+
+      try {
+        const response = await fetch('/api/configuration', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          toast.classList.remove('hidden');
+          setTimeout(() => toast.classList.add('hidden'), 4000);
+        } else {
+          alert('Failed to save settings');
+        }
+      } catch (err) {
+        alert('Network error. Failed to save.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Save Configuration';
+      }
+    });
+
+    loadSettings();
+  </script>
+
+</body>
+</html>

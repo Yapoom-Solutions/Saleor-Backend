@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><meta name="robots" content="noindex"><title>Sign in to the Saleor Dashboard</title><meta name="description" content="Sign in to the Saleor Dashboard to manage your orders, payments, products and more."><script>
+  (function() {
+    const host = window.location.hostname;
+    const protocol = window.location.protocol;
+    const hostWithoutPort = host.split(":")[0];
+    const apiUrl = hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1"
+      ? `${protocol}//localhost:8000/graphql/`
+      : `${protocol}//${hostWithoutPort}:8000/graphql/`;
+
+    window.__SALEOR_CONFIG__ = {
+      API_URL: apiUrl,
+      APP_MOUNT_URI: "/dashboard/",
+      STATIC_URL: "/dashboard/",
+      EXTENSIONS_API_URL: apiUrl,
+      IS_CLOUD_INSTANCE: "",
+      SALEOR_CLOUD_APP_DOMAIN: "",
+      LOCALE_CODE: "EN",
+    };
+  })();
+</script><script type="module" crossorigin src="/dashboard/index-DdwSsZm6.js"></script><link rel="modulepreload" crossorigin href="/dashboard/vendor-C4a9QYcT.js"><link rel="stylesheet" crossorigin href="/dashboard/vendor-ZiJb2HT-.css"><link rel="stylesheet" crossorigin href="/dashboard/index-C9gN8TSM.css"></head><body><div id="dashboard-app"></div><div id="portal"></div><div id="modal-root"></div><div id="toast-portal"></div></body></html>
