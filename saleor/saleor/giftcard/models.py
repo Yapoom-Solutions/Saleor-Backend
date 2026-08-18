@@ -1,0 +1,174 @@
+import os
+
+from django.conf import settings
+from django.contrib.postgres.indexes import BTreeIndex, GinIndex
+from django.contrib.postgres.search import SearchVectorField
+from django.core.validators import MinLengthValidator
+from django.db import models
+from django.db.models import JSONField, Q
+from django.utils import timezone
+
+from ..app.models import App
+from ..core.db.fields import MoneyField
+from ..core.models import ModelWithMetadata
+from ..core.utils.json_serializer import CustomJsonEncoder
+from ..permission.enums import GiftcardPermissions
+from . import GiftCardEvents
+
+
+class GiftCardTag(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+
+    class Meta:
+        ordering = ("name",)
+        indexes = [
+            GinIndex(
+                name="gift_card_tag_search_gin",
+                # `opclasses` and `fields` should be the same length
+                fields=["name"],
+                opclasses=["gin_trgm_ops"],
+            ),
+        ]
+
+
+class GiftCardQueryset(models.QuerySet):
+    def active(self, date):
+        return self.filter(
+            Q(expiry_date__isnull=True) | Q(expiry_date__gte=date),
+            is_active=True,
+        )
+
+
+GiftCardManager = models.Manager.from_queryset(GiftCardQueryset)
+
+
+class GiftCard(ModelWithMetadata):
+    code = models.CharField(
+        max_length=16, unique=True, validators=[MinLengthValidator(8)], db_index=True
+    )
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    used_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="gift_cards",
+    )
+    created_by_email = models.EmailField(null=True, blank=True)
+    used_by_email = models.EmailField(null=True, blank=True)
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        null=True,
+        # PROTECT (not SET_NULL): deleting an assignee must go through
+        # deactivate_assigned_gift_cards() so the card is detached AND
+        # deactivated together. A raw delete is refused rather than silently
+        # leaving an active card restricted to a ghost user.
+        on_delete=models.PROTECT,
+        related_name="assigned_gift_cards",
+    )
+    assigned_to_email = models.EmailField(null=True, blank=True)
+    app = models.ForeignKey(
+        App,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    expiry_date = models.DateField(null=True, blank=True)
+
+    tags = models.ManyToManyField(GiftCardTag, "gift_cards")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    last_used_on = models.DateTimeField(null=True, blank=True)
+    product = models.ForeignKey(
+        "product.Product",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="gift_cards",
+    )
+    fulfillment_line = models.ForeignKey(
+        "order.FulfillmentLine",
+        related_name="gift_cards",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+    )
+
+    currency = models.CharField(
+        max_length=settings.DEFAULT_CURRENCY_CODE_LENGTH,
+        default=os.environ.get("DEFAULT_CURRENCY", "USD"),
+    )
+
+    initial_balance_amount = models.DecimalField(
+        max_digits=settings.DEFAULT_MAX_DIGITS,
+        decimal_places=settings.DEFAULT_DECIMAL_PLACES,
+    )
+    initial_balance = MoneyField(
+        amount_field="initial_balance_amount", currency_field="currency"
+    )
+
+    current_balance_amount = models.DecimalField(
+        max_digits=settings.DEFAULT_MAX_DIGITS,
+        decimal_places=settings.DEFAULT_DECIMAL_PLACES,
+    )
+    current_balance = MoneyField(
+        amount_field="current_balance_amount", currency_field="currency"
+    )
+    search_vector = SearchVectorField(blank=True, null=True)
+    search_index_dirty = models.BooleanField(default=True)
+
+    objects = GiftCardManager()
+
+    class Meta(ModelWithMetadata.Meta):
+        ordering = ("code",)
+        permissions = (
+            (GiftcardPermissions.MANAGE_GIFT_CARD.codename, "Manage gift cards."),
+        )
+        indexes = [
+            GinIndex(name="giftcard_tsearch", fields=["search_vector"]),
+            BTreeIndex(fields=["assigned_to"], name="giftcard_assigned_to_idx"),
+        ]
+        indexes.extend(ModelWithMetadata.Meta.indexes)
+        constraints = [
+            # Defense-in-depth backstop: no code path should ever persist a
+            # negative balance (writers clamp to zero), but the DB enforces it.
+            models.CheckConstraint(
+                condition=Q(current_balance_amount__gte=0),
+                name="giftcard_current_balance_non_negative",
+            ),
+        ]
+
+    @property
+    def display_code(self):
+        return self.code[-4:]
+
+
+class GiftCardEvent(models.Model):
+    date = models.DateTimeField(default=timezone.now, editable=False)
+    type = models.CharField(max_length=255, choices=GiftCardEvents.CHOICES)
+    parameters = JSONField(blank=True, default=dict, encoder=CustomJsonEncoder)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="gift_card_events",
+        on_delete=models.SET_NULL,
+        null=True,
+    )
+    app = models.ForeignKey(
+        App, related_name="gift_card_events", on_delete=models.SET_NULL, null=True
+    )
+    order = models.ForeignKey("order.Order", null=True, on_delete=models.SET_NULL)
+    gift_card = models.ForeignKey(
+        GiftCard, related_name="events", on_delete=models.CASCADE
+    )
+
+    class Meta:
+        ordering = ("date",)

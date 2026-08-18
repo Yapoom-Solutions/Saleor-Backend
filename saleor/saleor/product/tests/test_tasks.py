@@ -1,0 +1,712 @@
+import datetime
+import logging
+from contextlib import contextmanager
+from decimal import Decimal
+from io import BytesIO
+from unittest.mock import MagicMock, patch
+
+import pytest
+from django.utils import timezone
+from faker import Faker
+from PIL import Image
+from requests.exceptions import HTTPError, InvalidSchema, RequestException
+
+from ...discount import PromotionType, RewardValueType
+from ...discount.models import Promotion, PromotionRule
+from ..interface import VariantDiscountedPriceChange
+from ..models import (
+    Product,
+    ProductChannelListing,
+    ProductMedia,
+    ProductVariantChannelListing,
+)
+from ..tasks import (
+    _get_preorder_variants_to_clean,
+    fetch_product_media_image_task,
+    mark_products_search_vector_as_dirty,
+    recalculate_discounted_price_for_products_task,
+    update_products_search_vector_task,
+    update_variant_relations_for_active_promotion_rules_task,
+    update_variants_names,
+)
+from ..utils.variants import fetch_variants_for_promotion_rules
+
+
+@contextmanager
+def mock_http_response_for_product_task(
+    status_code=200, content_type=None, content=None
+):
+    """Patch HTTPClient.send_request to return a response with the given attributes."""
+    mock_response = MagicMock()
+    mock_response.status_code = status_code
+    mock_response.headers.get.return_value = content_type
+    mock_response.content = content
+
+    with patch("saleor.product.tasks.HTTPClient") as mock_client:
+        mock_client.send_request.return_value.__enter__ = MagicMock(
+            return_value=mock_response
+        )
+        yield mock_client
+
+
+@patch(
+    "saleor.product.tasks.update_variant_relations_for_active_promotion_rules_task."
+    "delay"
+)
+def test_update_variant_relations_for_active_promotion_rules_task(
+    update_variant_relations_for_active_promotion_rules_task_mock,
+    promotion_list,
+    product_list,
+    collection,
+):
+    # given
+    Promotion.objects.update(start_date=timezone.now() - datetime.timedelta(days=1))
+    PromotionRule.objects.update(variants_dirty=True)
+    PromotionRuleVariant = PromotionRule.variants.through
+    PromotionRuleVariant.objects.all().delete()
+    products_with_promotions = product_list[1:]
+    collection.products.add(*products_with_promotions)
+
+    # when
+    update_variant_relations_for_active_promotion_rules_task()
+
+    # then
+    listing_marked_as_dirty = ProductChannelListing.objects.filter(
+        product__in=products_with_promotions, discounted_price_dirty=True
+    ).values_list("id", flat=True)
+    all_product_listings = ProductChannelListing.objects.filter(
+        product__in=products_with_promotions
+    ).values_list("id", flat=True)
+    assert listing_marked_as_dirty
+    assert set(listing_marked_as_dirty) == set(all_product_listings)
+    assert set(
+        PromotionRuleVariant.objects.values_list("promotionrule_id", flat=True)
+    ) == set(PromotionRule.objects.values_list("id", flat=True))
+    assert update_variant_relations_for_active_promotion_rules_task_mock.called
+
+
+@patch(
+    "saleor.product.tasks.update_variant_relations_for_active_promotion_rules_task."
+    "delay"
+)
+def test_update_variant_relations_for_active_promotion_rules_task_when_not_valid(
+    update_variant_relations_for_active_promotion_rules_task_mock,
+    product_list,
+    category,
+    channel_USD,
+):
+    # given
+    category.metadata = {"test": "test"}
+    category.save(update_fields=["metadata"])
+
+    promotion = Promotion.objects.create(
+        name="Promotion",
+        type=PromotionType.CATALOGUE,
+        end_date=timezone.now() + datetime.timedelta(days=30),
+    )
+    rule = promotion.rules.create(
+        name="Percentage promotion rule",
+        reward_value_type=RewardValueType.PERCENTAGE,
+        reward_value=Decimal(10),
+        catalogue_predicate={
+            "categoryPredicate": {"metadata": [{"key": "test", "value": "test"}]}
+        },
+    )
+    rule.channels.add(channel_USD)
+    fetch_variants_for_promotion_rules(promotion.rules.all())
+
+    PromotionRule.objects.update(variants_dirty=True)
+    category.metadata = {}
+    category.save(update_fields=["metadata"])
+
+    # when
+    update_variant_relations_for_active_promotion_rules_task()
+
+    # then
+    product_ids_in_category = Product.objects.filter(category=category).values_list(
+        "id", flat=True
+    )
+    assert ProductChannelListing.objects.filter(
+        product_id__in=product_ids_in_category, discounted_price_dirty=True
+    ).count() == len(product_ids_in_category)
+
+
+@patch("saleor.product.tasks.PROMOTION_RULE_BATCH_SIZE", 1)
+def test_update_variant_relations_for_active_promotion_rules_task_with_order_predicate(
+    order_promotion_rule,
+):
+    # given
+    Promotion.objects.update(start_date=timezone.now() - datetime.timedelta(days=1))
+    PromotionRule.objects.update(catalogue_predicate={})
+
+    # when
+    update_variant_relations_for_active_promotion_rules_task()
+
+    # then
+    assert PromotionRule.objects.filter(variants_dirty=True).count() == 0
+
+
+@pytest.mark.parametrize("reward_value", [None, 0])
+@patch("saleor.product.tasks.PROMOTION_RULE_BATCH_SIZE", 1)
+@patch("saleor.product.tasks.recalculate_discounted_price_for_products_task.delay")
+@patch("saleor.product.utils.variants.fetch_variants_for_promotion_rules")
+def test_update_variant_relations_for_active_promotion_rules_with_empty_reward_value(
+    fetch_variants_for_promotion_rules_mock,
+    recalculate_discounted_price_for_products_task_mock,
+    reward_value,
+    promotion_list,
+    collection,
+    product_list,
+):
+    # given
+    Promotion.objects.update(start_date=timezone.now() - datetime.timedelta(days=1))
+    PromotionRuleVariant = PromotionRule.variants.through
+    PromotionRuleVariant.objects.all().delete()
+
+    collection.products.add(*product_list[1:])
+
+    rule = PromotionRule.objects.first()
+    rule.variants_dirty = False
+    rule.reward_value = reward_value
+    rule.save(update_fields=["reward_value"])
+
+    # when
+    recalculate_discounted_price_for_products_task()
+
+    # then
+    assert not fetch_variants_for_promotion_rules_mock.called
+    assert not recalculate_discounted_price_for_products_task_mock.called
+
+
+@patch("saleor.product.tasks.recalculate_discounted_price_for_products_task.delay")
+def test_recalculate_discounted_price_for_products_task(
+    recalculate_discounted_price_for_products_task_mock,
+    product_list,
+):
+    # given
+    ProductChannelListing.objects.update(
+        discounted_price_amount=0, discounted_price_dirty=True
+    )
+    ProductVariantChannelListing.objects.update(discounted_price_amount=0)
+
+    # when
+    recalculate_discounted_price_for_products_task()
+
+    # then
+    assert not ProductChannelListing.objects.filter(discounted_price_amount=0).exists()
+    assert not ProductVariantChannelListing.objects.filter(
+        discounted_price_amount=0
+    ).exists()
+    assert recalculate_discounted_price_for_products_task_mock.called
+
+
+@patch("saleor.product.tasks.update_discounted_prices_for_promotion", return_value=[])
+@patch("saleor.product.tasks.recalculate_discounted_price_for_products_task.delay")
+def test_recalculate_discounted_price_for_products_task_with_correct_prices(
+    recalculate_discounted_price_for_products_task_mock,
+    update_discounted_prices_for_promotion_mock,
+    product_list,
+):
+    # given
+    ProductChannelListing.objects.update(discounted_price_dirty=False)
+
+    # when
+    recalculate_discounted_price_for_products_task()
+
+    # then
+    assert not recalculate_discounted_price_for_products_task_mock.called
+    assert not update_discounted_prices_for_promotion_mock.called
+
+
+@patch("saleor.product.tasks.update_discounted_prices_for_promotion", return_value=[])
+@patch("saleor.product.tasks.recalculate_discounted_price_for_products_task.delay")
+def test_recalculate_discounted_price_for_products_task_updates_only_dirty_listings(
+    recalculate_discounted_price_for_products_task_mock,
+    update_discounted_prices_for_promotion_mock,
+    product_list,
+):
+    # given
+
+    listings = ProductChannelListing.objects.all()
+    assert listings.count() != 1
+
+    listing_marked_as_dirty = listings.first()
+    listing_marked_as_dirty.discounted_price_dirty = True
+    listing_marked_as_dirty.save(update_fields=["discounted_price_dirty"])
+
+    # when
+    recalculate_discounted_price_for_products_task()
+
+    # then
+    assert update_discounted_prices_for_promotion_mock.called
+    recalculate_discounted_price_for_products_task_mock.assert_called_once_with()
+
+
+@patch("saleor.product.tasks.recalculate_discounted_price_for_products_task.delay")
+@patch("saleor.product.tasks.PROMOTION_RULE_BATCH_SIZE", 1)
+def test_recalculate_discounted_price_for_products_task_re_trigger_task(
+    recalculate_discounted_price_for_products_task_mock,
+    product_list,
+):
+    # given
+    ProductChannelListing.objects.update(discounted_price_dirty=True)
+
+    # when
+    recalculate_discounted_price_for_products_task()
+
+    # then
+    assert recalculate_discounted_price_for_products_task_mock.called
+
+
+def test_update_variants_names(product_variant_list, size_attribute):
+    # given
+    variant_without_name = product_variant_list[0]
+    variant_with_name = product_variant_list[1]
+    random_name = Faker().word()
+    variant_with_name.name = random_name
+    variant_with_name.save()
+    product = variant_without_name.product
+
+    # when
+    update_variants_names(product.product_type_id, [size_attribute.id])
+
+    # then
+    variant_without_name.refresh_from_db()
+    variant_with_name.refresh_from_db()
+    assert variant_without_name.name == variant_without_name.sku
+    assert variant_with_name.name == random_name
+
+
+def test_update_variants_names_product_type_does_not_exist(caplog):
+    # given
+    caplog.set_level(logging.WARNING)
+    product_type_id = -1
+
+    # when
+    update_variants_names(product_type_id, [])
+
+    # then
+    assert f"Cannot find product type with id: {product_type_id}" in caplog.text
+
+
+def test_get_preorder_variants_to_clean(
+    variant,
+    preorder_variant_global_threshold,
+    preorder_variant_channel_threshold,
+    preorder_variant_global_and_channel_threshold,
+):
+    preorder_variant_before_end_date = preorder_variant_channel_threshold
+    preorder_variant_before_end_date.preorder_end_date = (
+        timezone.now() + datetime.timedelta(days=1)
+    )
+    preorder_variant_before_end_date.save(update_fields=["preorder_end_date"])
+
+    preorder_variant_after_end_date = preorder_variant_global_and_channel_threshold
+    preorder_variant_after_end_date.preorder_end_date = (
+        timezone.now() - datetime.timedelta(days=1)
+    )
+    preorder_variant_after_end_date.save(update_fields=["preorder_end_date"])
+
+    variants_to_clean = _get_preorder_variants_to_clean()
+    assert len(variants_to_clean) == 1
+    assert variants_to_clean[0] == preorder_variant_after_end_date
+
+
+def test_update_products_search_vector_task(product):
+    # given
+    product.search_index_dirty = True
+    product.save(update_fields=["search_index_dirty"])
+
+    # when
+    update_products_search_vector_task()
+    product.refresh_from_db(fields=["search_index_dirty"])
+
+    # then
+    assert product.search_index_dirty is False
+
+
+@pytest.mark.parametrize("dirty_products_number", [0, 1, 2, 3])
+def test_update_products_search_vector_task_with_static_number_of_queries(
+    product, product_list, dirty_products_number, django_assert_num_queries
+):
+    # given
+    product.search_index_dirty = True
+    product.save()
+    for i in range(dirty_products_number):
+        product_list[i].search_index_dirty = True
+        product_list[i].save(update_fields=["search_index_dirty"])
+
+    # when & # then
+    with django_assert_num_queries(16):
+        update_products_search_vector_task()
+
+
+@pytest.mark.slow
+@pytest.mark.limit_memory("50 MB")
+def test_mem_usage_recalculate_discounted_price_for_products_task(
+    lots_of_products_with_variants,
+):
+    recalculate_discounted_price_for_products_task()
+
+
+def test_mark_products_search_vector_as_dirty(product_list):
+    # given
+    product_ids = [product.id for product in product_list]
+    Product.objects.all().update(search_index_dirty=False)
+
+    # when
+    mark_products_search_vector_as_dirty(product_ids)
+
+    # then
+    assert all(
+        Product.objects.filter(id__in=product_ids).values_list(
+            "search_index_dirty", flat=True
+        )
+    )
+
+
+def test_fetch_product_media_image_already_has_image(product_media_image):
+    # given
+    assert product_media_image.image
+    image = product_media_image.image
+
+    # when
+    fetch_product_media_image_task.apply(args=(product_media_image.pk,))
+
+    # then
+    product_media_image.refresh_from_db(fields=["image"])
+    assert product_media_image.image == image
+
+
+def test_fetch_product_media_image_not_found():
+    # given
+    non_existent_id = -1
+    assert not ProductMedia.objects.filter(pk=non_existent_id).exists()
+
+    # when
+    fetch_product_media_image_task.apply(args=(non_existent_id,))
+
+    # then
+    assert not ProductMedia.objects.filter(pk=non_existent_id).exists()
+
+
+def test_fetch_product_media_image_missing_external_url_and_image(
+    product_media_image_not_yet_fetched,
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+    product_media.external_url = None
+    product_media.save(update_fields=["external_url"])
+    assert not product_media.image
+
+    # when
+    fetch_product_media_image_task.apply(args=(product_media.pk,))
+
+    # then
+    assert ProductMedia.objects.filter(pk=product_media.pk).exists()
+
+
+def test_fetch_product_media_image_wrong_type(product_media_video):
+    # given
+    product_media = product_media_video
+    assert not product_media.image
+
+    # when
+    fetch_product_media_image_task.apply(args=(product_media.pk,))
+
+    # then
+    product_media.refresh_from_db()
+    assert not product_media.image
+
+
+def test_fetch_product_media_image_non_image_content_type(
+    product_media_image_not_yet_fetched,
+    caplog,
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+    assert product_media.external_url
+    assert not product_media.image
+
+    # when
+    with mock_http_response_for_product_task(
+        status_code=200, content_type="text/plain"
+    ):
+        fetch_product_media_image_task.apply(args=(product_media.pk,))
+
+    # then
+    assert not ProductMedia.objects.filter(pk=product_media.pk).exists()
+
+
+def test_fetch_product_media_image_success(
+    product_media_image_not_yet_fetched, media_root
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+    assert product_media.external_url
+    assert not product_media.image
+
+    image_buffer = BytesIO()
+    Image.new("RGB", (1, 1)).save(image_buffer, format="JPEG")
+    image_bytes = image_buffer.getvalue()
+
+    # when
+    with mock_http_response_for_product_task(
+        status_code=200, content_type="image/jpeg", content=image_bytes
+    ):
+        fetch_product_media_image_task.apply(args=(product_media.pk,))
+
+    # then
+    product_media.refresh_from_db()
+    assert product_media.external_url is None
+    assert product_media.image
+
+
+def test_fetch_product_media_image_unsupported_image_content_type(
+    product_media_image_not_yet_fetched,
+    caplog,
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+    assert not product_media.image
+
+    # when
+    with mock_http_response_for_product_task(
+        status_code=200, content_type="image/svg+xml"
+    ):
+        fetch_product_media_image_task.apply(args=(product_media.pk,))
+
+    # then
+    assert not ProductMedia.objects.filter(pk=product_media.pk).exists()
+
+
+def test_fetch_product_media_image_request_exception(
+    product_media_image_not_yet_fetched,
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+    assert product_media.external_url
+    assert not product_media.image
+
+    # when
+    with patch("saleor.product.tasks.HTTPClient") as mock_http_client:
+        mock_http_client.send_request.side_effect = RequestException(
+            "Connection timeout"
+        )
+        with pytest.raises(RequestException):
+            # this call simulates a single attempt for executing the task
+            # does not call .apply as otherwise on_failure hook would be called
+            # and this results in removing ProductMedia object
+            fetch_product_media_image_task(product_media.pk)
+
+    # then
+    assert ProductMedia.objects.filter(pk=product_media.pk).exists()
+
+
+@pytest.mark.parametrize("exc_class", [InvalidSchema, ValueError])
+def test_fetch_product_media_image_non_retryable_exception(
+    exc_class,
+    product_media_image_not_yet_fetched,
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+    assert product_media.external_url
+    assert not product_media.image
+
+    # when
+    with patch("saleor.product.tasks.HTTPClient") as mock_http_client:
+        mock_http_client.send_request.side_effect = exc_class()
+        with pytest.raises(exc_class):
+            # this call simulates a single attempt for executing the task
+            fetch_product_media_image_task(product_media.pk)
+
+    # then
+    assert ProductMedia.objects.filter(pk=product_media.pk).exists()
+
+
+@pytest.mark.parametrize("exc_class", [InvalidSchema, ValueError])
+def test_fetch_product_media_image_non_retryable_exception_on_failure_handler(
+    exc_class,
+    product_media_image_not_yet_fetched,
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+    assert product_media.external_url
+    assert not product_media.image
+
+    # when
+    with patch("saleor.product.tasks.HTTPClient") as mock_http_client:
+        mock_http_client.send_request.side_effect = exc_class()
+        fetch_product_media_image_task.apply(args=(product_media.pk,))
+
+    # then
+    assert not ProductMedia.objects.filter(pk=product_media.pk).exists()
+
+
+def test_fetch_product_media_image_deleted_after_final_retry(
+    product_media_image_not_yet_fetched,
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+
+    # when
+    with patch("saleor.product.tasks.HTTPClient") as mock_http_client:
+        mock_http_client.send_request.side_effect = RequestException(
+            "Connection timeout"
+        )
+        # mind that .apply will execute retries and as well as hooks (like on_failure hook)
+        fetch_product_media_image_task.apply(args=(product_media.pk,))
+
+    # then
+    assert not ProductMedia.objects.filter(pk=product_media.pk).exists()
+
+
+def test_fetch_product_media_image_invalid_exif(
+    product_media_image_not_yet_fetched,
+    caplog,
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+    assert not product_media.image
+
+    image_buffer = BytesIO()
+    Image.new("RGB", (1, 1)).save(image_buffer, format="JPEG")
+    image_bytes = image_buffer.getvalue()
+
+    # when
+    with (
+        mock_http_response_for_product_task(
+            status_code=200, content_type="image/jpeg", content=image_bytes
+        ),
+        patch("saleor.product.utils.tasks_utils.Image.open") as mock_image_open,
+    ):
+        mock_pil_image = MagicMock()
+        mock_pil_image.getexif.side_effect = SyntaxError("Invalid EXIF")
+        mock_image_open.return_value = mock_pil_image
+
+        fetch_product_media_image_task.apply(args=(product_media.pk,))
+
+    # then
+    assert not ProductMedia.objects.filter(pk=product_media.pk).exists()
+
+
+def test_fetch_product_media_image_invalid_metadata(
+    product_media_image_not_yet_fetched,
+    caplog,
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+    assert not product_media.image
+
+    # when
+    with mock_http_response_for_product_task(
+        status_code=200, content_type="image/jpeg", content=b"not an image"
+    ):
+        fetch_product_media_image_task.apply(args=(product_media.pk,))
+
+    # then
+    assert not ProductMedia.objects.filter(pk=product_media.pk).exists()
+
+
+@pytest.mark.parametrize("status_code", [500, 502, 503])
+def test_fetch_product_media_image_server_error_triggers_retry(
+    product_media_image_not_yet_fetched,
+    status_code,
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+
+    # when & then
+    with mock_http_response_for_product_task(status_code=status_code):
+        with pytest.raises(HTTPError):
+            # this call simulates a single attempt for executing the task
+            # does not call .apply as otherwise on_failure hook would be called
+            # and this results in removing ProductMedia object
+            fetch_product_media_image_task(product_media.pk)
+
+    # then
+    product_media.refresh_from_db()
+    assert not product_media.image
+    assert product_media.external_url
+
+
+@pytest.mark.parametrize("status_code", [100, 199, 300, 301, 401, 404, 499])
+def test_fetch_product_media_image_client_error_does_not_retry(
+    product_media_image_not_yet_fetched,
+    caplog,
+    status_code,
+):
+    # given
+    product_media = product_media_image_not_yet_fetched
+
+    # when
+    with mock_http_response_for_product_task(status_code=status_code):
+        fetch_product_media_image_task.apply(args=(product_media.pk,))
+
+    # then
+    assert not ProductMedia.objects.filter(pk=product_media.pk).exists()
+
+
+@patch("saleor.product.tasks.call_event")
+@patch("saleor.product.tasks.get_plugins_manager")
+@patch("saleor.product.tasks.get_webhooks_for_event")
+@patch("saleor.product.tasks.recalculate_discounted_price_for_products_task.delay")
+def test_recalculate_discounted_price_triggers_variant_price_updated_webhook(
+    recalculate_task_mock,
+    get_webhooks_mock,
+    get_manager_mock,
+    call_event_mock,
+    product_list,
+    channel_USD,
+):
+    # given
+    variant_listings = ProductVariantChannelListing.objects.filter(
+        variant__product__in=product_list
+    )
+    expected_prices = {
+        listing.variant_id: listing.price_amount for listing in variant_listings
+    }
+    current_price = Decimal(1)
+    ProductChannelListing.objects.update(
+        discounted_price_amount=current_price, discounted_price_dirty=True
+    )
+    ProductVariantChannelListing.objects.update(discounted_price_amount=current_price)
+
+    mock_webhooks = [patch]
+    get_webhooks_mock.return_value = mock_webhooks
+
+    # when
+    recalculate_discounted_price_for_products_task()
+
+    # then
+    assert call_event_mock.called
+    calls = call_event_mock.call_args_list
+    assert len(calls) == len(expected_prices)
+    for call in calls:
+        price_info = call[0][1]
+        assert isinstance(price_info, VariantDiscountedPriceChange)
+        assert price_info.channel_slug == channel_USD.slug
+        assert price_info.currency == channel_USD.currency_code
+        assert price_info.previous_price_amount == current_price
+        assert price_info.new_price_amount == expected_prices[price_info.variant_id]
+
+
+@patch("saleor.product.tasks.call_event")
+@patch("saleor.product.tasks.get_webhooks_for_event")
+@patch("saleor.product.tasks.update_discounted_prices_for_promotion", return_value=[])
+@patch("saleor.product.tasks.recalculate_discounted_price_for_products_task.delay")
+def test_recalculate_discounted_price_no_webhook_when_prices_unchanged(
+    recalculate_task_mock,
+    update_prices_mock,
+    get_webhooks_mock,
+    call_event_mock,
+    product_list,
+):
+    # given
+    ProductChannelListing.objects.update(discounted_price_dirty=True)
+
+    # when
+    recalculate_discounted_price_for_products_task()
+
+    # then
+    assert not call_event_mock.called

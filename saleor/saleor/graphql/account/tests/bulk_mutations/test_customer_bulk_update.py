@@ -1,0 +1,1587 @@
+from unittest.mock import ANY, patch
+
+import graphene
+import pytest
+
+from .....account import models
+from .....account.error_codes import CustomerBulkUpdateErrorCode
+from .....account.events import CustomerEvents
+from .....attribute.models import AssignedUserAttributeValue
+from .....giftcard.models import GiftCard
+from .....giftcard.search import update_gift_cards_search_vector
+from ....core.enums import ErrorPolicyEnum
+from ....tests.utils import get_graphql_content
+from ..utils import convert_dict_keys_to_camel_case
+
+CUSTOMER_BULK_UPDATE_MUTATION = """
+    mutation CustomerBulkUpdate(
+        $customers: [CustomerBulkUpdateInput!]!,
+        $errorPolicy: ErrorPolicyEnum
+    ){
+        customerBulkUpdate(customers: $customers, errorPolicy: $errorPolicy){
+            errors { code message }
+            results{
+                errors {
+                    path
+                    message
+                    code
+                }
+                customer{
+                    id
+                    firstName
+                    email
+                    defaultShippingAddress {
+                        metadata {
+                            key
+                            value
+                        }
+                        postalCode
+                    }
+                    defaultBillingAddress {
+                        metadata {
+                            key
+                            value
+                        }
+                        postalCode
+                    }
+                }
+            }
+            count
+        }
+    }
+"""
+
+
+def test_customers_bulk_update_using_ids(
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+    graphql_address_data,
+):
+    # given
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+
+    customer_1_id = graphene.Node.to_global_id("User", customer_1.pk)
+    customer_2_id = graphene.Node.to_global_id("User", customer_2.pk)
+
+    customer_1_new_name = "NewName1"
+    customer_2_new_name = "NewName2"
+
+    customers_input = [
+        {
+            "id": customer_1_id,
+            "input": {
+                "firstName": customer_1_new_name,
+                "defaultShippingAddress": graphql_address_data,
+                "defaultBillingAddress": graphql_address_data,
+            },
+        },
+        {
+            "id": customer_2_id,
+            "input": {
+                "firstName": customer_2_new_name,
+                "defaultShippingAddress": graphql_address_data,
+                "defaultBillingAddress": graphql_address_data,
+            },
+        },
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    customer_1.refresh_from_db()
+    customer_2.refresh_from_db()
+    stored_metadata = {"public": "public_value"}
+    assert not data["results"][0]["errors"]
+    assert not data["results"][1]["errors"]
+    assert data["count"] == 2
+    assert customer_1.first_name == customer_1_new_name
+    assert customer_1.default_billing_address.metadata == stored_metadata
+    assert customer_1.default_shipping_address.metadata == stored_metadata
+    assert customer_2.first_name == customer_2_new_name
+    assert customer_2.default_billing_address.metadata == stored_metadata
+    assert customer_2.default_shipping_address.metadata == stored_metadata
+
+
+@patch("saleor.plugins.manager.PluginsManager.customer_updated")
+def test_stocks_bulk_update_send_stock_updated_event(
+    customer_updated_webhook,
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+):
+    # given
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+
+    customer_1_id = graphene.Node.to_global_id("User", customer_1.pk)
+    customer_2_id = graphene.Node.to_global_id("User", customer_2.pk)
+
+    customer_1_new_name = "NewName1"
+    customer_2_new_name = "NewName2"
+
+    customers_input = [
+        {
+            "id": customer_1_id,
+            "input": {
+                "firstName": customer_1_new_name,
+            },
+        },
+        {
+            "id": customer_2_id,
+            "input": {
+                "firstName": customer_2_new_name,
+            },
+        },
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    assert not data["results"][0]["errors"]
+    assert not data["results"][1]["errors"]
+    assert data["count"] == 2
+    assert customer_updated_webhook.call_count == 2
+
+
+def test_customers_bulk_update_generate_events_when_deactivating(
+    staff_api_client,
+    staff_user,
+    customer_users,
+    permission_manage_users,
+):
+    # given
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+
+    customer_1_id = graphene.Node.to_global_id("User", customer_1.pk)
+    customer_2_id = graphene.Node.to_global_id("User", customer_2.pk)
+
+    customers_input = [
+        {
+            "id": customer_1_id,
+            "input": {
+                "isActive": False,
+            },
+        },
+        {
+            "id": customer_2_id,
+            "input": {
+                "isActive": False,
+            },
+        },
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    account_deactivated_events = models.CustomerEvent.objects.all()
+    assert not data["results"][0]["errors"]
+    assert not data["results"][1]["errors"]
+    assert data["count"] == 2
+
+    assert len(account_deactivated_events) == 2
+    for event in account_deactivated_events:
+        assert event.type == CustomerEvents.ACCOUNT_DEACTIVATED
+        assert event.user.pk == staff_user.pk
+
+
+def test_customers_bulk_update_generate_events_when_name_change(
+    staff_api_client,
+    staff_user,
+    customer_users,
+    permission_manage_users,
+):
+    # given
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+
+    customer_1_id = graphene.Node.to_global_id("User", customer_1.pk)
+    customer_2_id = graphene.Node.to_global_id("User", customer_2.pk)
+
+    customer_1_new_name = "NewName1"
+    customer_2_new_name = "NewName2"
+
+    customers_input = [
+        {
+            "id": customer_1_id,
+            "input": {
+                "firstName": customer_1_new_name,
+            },
+        },
+        {
+            "id": customer_2_id,
+            "input": {
+                "firstName": customer_2_new_name,
+            },
+        },
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    name_changed_events = models.CustomerEvent.objects.all()
+    assert not data["results"][0]["errors"]
+    assert not data["results"][1]["errors"]
+    assert data["count"] == 2
+
+    assert len(name_changed_events) == 2
+    for event in name_changed_events:
+        assert event.type == CustomerEvents.NAME_ASSIGNED
+        assert event.user.pk == staff_user.pk
+
+
+def test_customers_bulk_update_generate_events_when_email_change(
+    staff_api_client,
+    staff_user,
+    gift_card,
+    order,
+    customer_user,
+    permission_manage_users,
+):
+    # give
+
+    customer_id = graphene.Node.to_global_id("User", customer_user.pk)
+    customer_new_email = "newemail1@example.com"
+
+    gift_card.created_by = None
+    gift_card.created_by_email = customer_new_email
+    gift_card.save(update_fields=["created_by", "created_by_email"])
+
+    order.user = None
+    order.user_email = customer_new_email
+    order.save(update_fields=["user_email", "user"])
+
+    customers_input = [
+        {
+            "id": customer_id,
+            "input": {
+                "email": customer_new_email,
+            },
+        }
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    gift_card.refresh_from_db()
+    order.refresh_from_db()
+    customer_user.refresh_from_db()
+    email_changed_event = models.CustomerEvent.objects.get()
+    assert not data["results"][0]["errors"]
+    assert data["count"] == 1
+    assert email_changed_event.type == CustomerEvents.EMAIL_ASSIGNED
+    assert email_changed_event.user.pk == staff_user.pk
+    assert gift_card.created_by == customer_user
+    assert gift_card.created_by_email == customer_user.email
+    assert order.user == customer_user
+
+
+def test_customers_bulk_update_match_orders_and_gift_card_when_confirmed(
+    staff_api_client,
+    staff_user,
+    gift_card,
+    order,
+    customer_user,
+    permission_manage_users,
+):
+    # given
+    customer_user.is_confirmed = False
+    customer_user.save()
+
+    customer_id = graphene.Node.to_global_id("User", customer_user.pk)
+
+    gift_card.created_by = None
+    gift_card.created_by_email = customer_user.email
+    gift_card.save(update_fields=["created_by", "created_by_email"])
+
+    order.user = None
+    order.user_email = customer_user.email
+    order.save(update_fields=["user_email", "user"])
+
+    customers_input = [
+        {
+            "id": customer_id,
+            "input": {
+                "isConfirmed": True,
+            },
+        }
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    gift_card.refresh_from_db()
+    order.refresh_from_db()
+    customer_user.refresh_from_db()
+    assert not data["results"][0]["errors"]
+    assert data["count"] == 1
+    assert gift_card.created_by == customer_user
+    assert gift_card.created_by_email == customer_user.email
+    assert order.user == customer_user
+    assert customer_user.is_confirmed
+
+
+def test_customers_bulk_update_using_external_refs(
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+):
+    # given
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+
+    customer_1_new_name = "NewName1"
+    customer_2_new_name = "NewName2"
+
+    customers_input = [
+        {
+            "externalReference": customer_1.external_reference,
+            "input": {
+                "firstName": customer_1_new_name,
+            },
+        },
+        {
+            "externalReference": customer_2.external_reference,
+            "input": {
+                "firstName": customer_2_new_name,
+            },
+        },
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    customer_1.refresh_from_db()
+    customer_2.refresh_from_db()
+    assert not data["results"][0]["errors"]
+    assert not data["results"][1]["errors"]
+    assert data["count"] == 2
+    assert customer_1.first_name == customer_1_new_name
+    assert customer_2.first_name == customer_2_new_name
+
+
+def test_customers_bulk_update_when_no_id_or_external_ref_provided(
+    staff_api_client,
+    permission_manage_users,
+):
+    # given
+    customers_input = [
+        {
+            "input": {
+                "firstName": "NewName",
+            }
+        }
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    assert data["results"][0]["errors"]
+    error = data["results"][0]["errors"][0]
+    assert error["message"] == (
+        "At least one of arguments is required: 'id', 'externalReference'."
+    )
+
+
+def test_customers_bulk_update_when_invalid_id_provided(
+    staff_api_client,
+    permission_manage_users,
+):
+    # given
+    customers_input = [
+        {
+            "id": "WrongID",
+            "input": {
+                "firstName": "NewName",
+            },
+        }
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    assert data["count"] == 0
+    assert data["results"][0]["errors"]
+    error = data["results"][0]["errors"][0]
+    assert error["message"] == "Invalid customer ID."
+
+
+def test_customers_bulk_update_when_customer_not_exists(
+    staff_api_client,
+    permission_manage_users,
+):
+    # given
+    customers_input = [
+        {
+            "externalReference": "WrongRef",
+            "input": {
+                "firstName": "NewName",
+            },
+        }
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    assert data["count"] == 0
+    assert data["results"][0]["errors"]
+    error = data["results"][0]["errors"][0]
+    assert error["code"] == CustomerBulkUpdateErrorCode.NOT_FOUND.name
+    assert error["message"] == "Customer was not found."
+
+
+def test_customers_bulk_update_correct_fields_validation(
+    staff_api_client,
+    customer_user,
+    permission_manage_users,
+):
+    # given
+    customer_id = graphene.Node.to_global_id("User", customer_user.pk)
+
+    new_name = 50 * "NewName1"
+    new_last_name = 30 * "NewLastName2"
+
+    customers_input = [
+        {"id": customer_id, "input": {"firstName": new_name, "lastName": new_last_name}}
+    ]
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    errors = data["results"][0]["errors"]
+    assert errors
+    assert errors[0]["code"] == CustomerBulkUpdateErrorCode.MAX_LENGTH.name
+    assert errors[0]["path"] == "input.firstName"
+    assert errors[1]["code"] == CustomerBulkUpdateErrorCode.MAX_LENGTH.name
+    assert errors[1]["path"] == "input.lastName"
+    assert data["count"] == 0
+
+
+def test_customers_bulk_update_with_address(
+    staff_api_client,
+    customer_user,
+    address,
+    permission_manage_users,
+):
+    # given
+    shipping_address, billing_address = (
+        customer_user.default_shipping_address,
+        customer_user.default_billing_address,
+    )
+
+    assert shipping_address
+    assert billing_address
+
+    customer_id = graphene.Node.to_global_id("User", customer_user.pk)
+
+    address_data = convert_dict_keys_to_camel_case(address.as_data())
+    address_data.pop("metadata")
+    address_data.pop("privateMetadata")
+    address_data.pop("validationSkipped")
+
+    new_street_address = "Updated street address"
+    address_data["streetAddress1"] = new_street_address
+
+    customers_input = [
+        {
+            "id": customer_id,
+            "input": {
+                "defaultBillingAddress": address_data,
+                "defaultShippingAddress": address_data,
+            },
+        }
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+
+    shipping_address.refresh_from_db()
+    billing_address.refresh_from_db()
+    customer_user.refresh_from_db()
+
+    assert not data["results"][0]["errors"]
+    assert data["count"] == 1
+    assert billing_address.street_address_1 == new_street_address
+    assert shipping_address.street_address_1 == new_street_address
+    assert customer_user.search_vector
+
+
+def test_customers_bulk_update_with_address_when_no_default(
+    staff_api_client,
+    customer_user,
+    address,
+    permission_manage_users,
+):
+    # given
+    shipping_address = customer_user.default_shipping_address
+
+    customer_user.default_shipping_address = None
+    customer_user.save(update_fields=["default_shipping_address"])
+
+    assert shipping_address
+
+    customer_id = graphene.Node.to_global_id("User", customer_user.pk)
+
+    address_data = convert_dict_keys_to_camel_case(shipping_address.as_data())
+    address_data.pop("validationSkipped")
+    address_data.pop("metadata")
+    address_data.pop("privateMetadata")
+
+    new_street_address = "Updated street address"
+    address_data["streetAddress1"] = new_street_address
+
+    customers_input = [
+        {
+            "id": customer_id,
+            "input": {
+                "defaultShippingAddress": address_data,
+            },
+        }
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    customer_user.refresh_from_db()
+    assert not data["results"][0]["errors"]
+    assert data["count"] == 1
+
+    assert customer_user.default_shipping_address
+    assert customer_user.default_shipping_address in customer_user.addresses.all()
+
+
+def test_customers_bulk_update_with_invalid_address(
+    staff_api_client,
+    customer_user,
+    address,
+    permission_manage_users,
+):
+    # given
+    shipping_address, billing_address = (
+        customer_user.default_shipping_address,
+        customer_user.default_billing_address,
+    )
+
+    assert shipping_address
+    assert billing_address
+
+    customer_id = graphene.Node.to_global_id("User", customer_user.pk)
+
+    address_data = convert_dict_keys_to_camel_case(address.as_data())
+    address_data.pop("validationSkipped")
+    address_data.pop("metadata")
+    address_data.pop("privateMetadata")
+    address_data.pop("country")
+
+    new_street_address = "Updated street address"
+    address_data["streetAddress1"] = new_street_address
+
+    customers_input = [
+        {
+            "id": customer_id,
+            "input": {
+                "defaultBillingAddress": address_data,
+            },
+        }
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    assert data["results"][0]["errors"]
+    assert data["count"] == 0
+    error = data["results"][0]["errors"][0]
+    assert error["code"] == CustomerBulkUpdateErrorCode.REQUIRED.name
+    assert error["path"] == "input.defaultBillingAddress.country"
+
+
+def test_customers_bulk_update_with_duplicated_external_ref(
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+):
+    # given
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+
+    customer_1_id = graphene.Node.to_global_id("User", customer_1.pk)
+    customer_2_id = graphene.Node.to_global_id("User", customer_2.pk)
+
+    external_ref = "sameRef"
+
+    customers_input = [
+        {"id": customer_1_id, "input": {"externalReference": external_ref}},
+        {"id": customer_2_id, "input": {"externalReference": external_ref}},
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    assert data["count"] == 0
+    assert data["results"][0]["errors"]
+    assert data["results"][1]["errors"]
+    assert (
+        data["results"][0]["errors"][0]["code"]
+        == CustomerBulkUpdateErrorCode.DUPLICATED_INPUT_ITEM.name
+    )
+    assert (
+        data["results"][1]["errors"][0]["code"]
+        == CustomerBulkUpdateErrorCode.DUPLICATED_INPUT_ITEM.name
+    )
+
+
+@patch("saleor.plugins.manager.PluginsManager.customer_metadata_updated")
+def test_customers_bulk_update_metadata(
+    mocked_customer_metadata_updated,
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+):
+    # given
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+
+    customer_1_id = graphene.Node.to_global_id("User", customer_1.pk)
+    customer_2_id = graphene.Node.to_global_id("User", customer_2.pk)
+
+    metadata_1 = {"key": "test key 1", "value": "test value 1"}
+    private_metadata_1 = {"key": "private test key 1", "value": "private test value 1"}
+    metadata_2 = {"key": "test key 2", "value": "test value 2"}
+    private_metadata_2 = {"key": "private test key 2", "value": "private test value 2"}
+
+    customers_input = [
+        {
+            "id": customer_1_id,
+            "input": {
+                "metadata": [metadata_1],
+                "privateMetadata": [private_metadata_1],
+            },
+        },
+        {
+            "id": customer_2_id,
+            "input": {
+                "metadata": [metadata_2],
+                "privateMetadata": [private_metadata_2],
+            },
+        },
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    customer_1.refresh_from_db()
+    customer_2.refresh_from_db()
+    assert not data["results"][0]["errors"]
+    assert not data["results"][1]["errors"]
+    assert data["count"] == 2
+    assert customer_1.metadata.get(metadata_1["key"]) == metadata_1["value"]
+    assert customer_2.metadata.get(metadata_2["key"]) == metadata_2["value"]
+    assert (
+        customer_1.private_metadata.get(private_metadata_1["key"])
+        == private_metadata_1["value"]
+    )
+    assert (
+        customer_2.private_metadata.get(private_metadata_2["key"])
+        == private_metadata_2["value"]
+    )
+    assert mocked_customer_metadata_updated.call_count == 2
+
+
+@patch("saleor.plugins.manager.PluginsManager.customer_metadata_updated")
+def test_customers_bulk_update_metadata_empty_key_in_one_input(
+    mocked_customer_metadata_updated,
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+):
+    # given
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+
+    customer_1_id = graphene.Node.to_global_id("User", customer_1.pk)
+    customer_2_id = graphene.Node.to_global_id("User", customer_2.pk)
+
+    metadata_1 = {"key": "", "value": "test value 1"}
+    private_metadata_1 = {"key": "", "value": "private test value 1"}
+    metadata_2 = {"key": "test key 2", "value": "test value 2"}
+    private_metadata_2 = {"key": "private test key 2", "value": "private test value 2"}
+
+    customers_input = [
+        {
+            "id": customer_1_id,
+            "input": {
+                "metadata": [metadata_1],
+                "privateMetadata": [private_metadata_1],
+            },
+        },
+        {
+            "id": customer_2_id,
+            "input": {
+                "metadata": [metadata_2],
+                "privateMetadata": [private_metadata_2],
+            },
+        },
+    ]
+
+    variables = {
+        "customers": customers_input,
+        "errorPolicy": ErrorPolicyEnum.REJECT_FAILED_ROWS.name,
+    }
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+
+    # then
+    customer_1.refresh_from_db()
+    customer_2.refresh_from_db()
+    customer_1_errors = data["results"][0]["errors"]
+    assert len(customer_1_errors) == 2
+    assert {error["code"] for error in customer_1_errors} == {
+        CustomerBulkUpdateErrorCode.REQUIRED.name
+    }
+    assert {error["path"] for error in customer_1_errors} == {
+        "input.metadata",
+        "input.privateMetadata",
+    }
+
+    assert not data["results"][1]["errors"]
+    assert data["count"] == 1
+    assert metadata_1["key"] not in customer_1.metadata
+    assert customer_2.metadata.get(metadata_2["key"]) == metadata_2["value"]
+    assert private_metadata_1["key"] not in customer_1.private_metadata
+    assert (
+        customer_2.private_metadata.get(private_metadata_2["key"])
+        == private_metadata_2["value"]
+    )
+    mocked_customer_metadata_updated.assert_called_once_with(customer_2, webhooks=ANY)
+
+
+def test_customers_bulk_update_trigger_gift_card_search_vector_update(
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+    gift_card_list,
+):
+    # given
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+
+    customer_1_id = graphene.Node.to_global_id("User", customer_1.pk)
+    customer_2_id = graphene.Node.to_global_id("User", customer_2.pk)
+
+    customer_1_new_name = "NewName1"
+    customer_2_new_name = "NewName2"
+
+    gift_card_1, gift_card_2, gift_card_3 = gift_card_list
+    gift_card_1.created_by = customer_1
+    gift_card_2.used_by = customer_2
+    gift_card_3.used_by_email = customer_1.email
+    GiftCard.objects.bulk_update(
+        gift_card_list, ["created_by", "used_by", "used_by_email"]
+    )
+
+    update_gift_cards_search_vector(gift_card_list)
+    for card in gift_card_list:
+        card.refresh_from_db()
+        assert card.search_index_dirty is False
+
+    customers_input = [
+        {
+            "id": customer_1_id,
+            "input": {
+                "firstName": customer_1_new_name,
+            },
+        },
+        {
+            "id": customer_2_id,
+            "input": {
+                "firstName": customer_2_new_name,
+            },
+        },
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+
+    # then
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+    assert not data["results"][0]["errors"]
+    assert not data["results"][1]["errors"]
+    assert data["count"] == 2
+    for card in gift_card_list:
+        card.refresh_from_db()
+        assert card.search_index_dirty is True
+
+
+def test_customers_bulk_update_skip_address_validation(
+    staff_api_client,
+    customer_user,
+    graphql_address_data_skipped_validation,
+    permission_manage_users,
+):
+    # given
+    shipping_address, billing_address = (
+        customer_user.default_shipping_address,
+        customer_user.default_billing_address,
+    )
+    assert shipping_address
+    assert billing_address
+
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    customer_id = graphene.Node.to_global_id("User", customer_user.pk)
+    address_data = graphql_address_data_skipped_validation
+    wrong_postal_code = "wrong postal code"
+    address_data["postalCode"] = wrong_postal_code
+
+    customers_input = [
+        {
+            "id": customer_id,
+            "input": {
+                "defaultBillingAddress": address_data,
+                "defaultShippingAddress": address_data,
+            },
+        }
+    ]
+
+    variables = {"customers": customers_input}
+
+    # when
+    response = staff_api_client.post_graphql(CUSTOMER_BULK_UPDATE_MUTATION, variables)
+    content = get_graphql_content(response)
+
+    # then
+    data = content["data"]["customerBulkUpdate"]
+    assert data["count"] == 1
+    assert not data["results"][0]["errors"]
+    customer_data = data["results"][0]["customer"]
+    assert customer_data["defaultShippingAddress"]["postalCode"] == wrong_postal_code
+    assert customer_data["defaultBillingAddress"]["postalCode"] == wrong_postal_code
+    shipping_address.refresh_from_db()
+    assert shipping_address.postal_code == wrong_postal_code
+    assert shipping_address.validation_skipped is True
+    billing_address.refresh_from_db()
+    assert billing_address.postal_code == wrong_postal_code
+    assert billing_address.validation_skipped is True
+
+
+@patch("saleor.plugins.manager.PluginsManager.customer_updated")
+@patch("saleor.plugins.manager.PluginsManager.customer_metadata_updated")
+@pytest.mark.parametrize(
+    ("field", "model_field"),
+    [("metadata", "metadata"), ("privateMetadata", "private_metadata")],
+)
+def test_bulk_metadata_update_with_changed_legacy_webhook_on(
+    mocked_customer_metadata_updated,
+    mocked_customer_updated,
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+    site_settings,
+    field,
+    model_field,
+):
+    # given
+    site_settings.use_legacy_update_webhook_emission = True
+    site_settings.save(update_fields=["use_legacy_update_webhook_emission"])
+
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+    customer_1_id = graphene.Node.to_global_id("User", customer_1.pk)
+    customer_2_id = graphene.Node.to_global_id("User", customer_2.pk)
+
+    key = "test_key"
+    value = "test_value"
+    metadata = [{"key": key, "value": value}]
+    customers_input = [
+        {"id": customer_1_id, "input": {field: metadata}},
+        {"id": customer_2_id, "input": {field: metadata}},
+    ]
+    variables = {"customers": customers_input}
+
+    # when
+    response = staff_api_client.post_graphql(
+        CUSTOMER_BULK_UPDATE_MUTATION, variables, permissions=[permission_manage_users]
+    )
+
+    # then
+    content = get_graphql_content(response)
+    assert not content["data"]["customerBulkUpdate"]["results"][0]["errors"]
+    assert not content["data"]["customerBulkUpdate"]["results"][1]["errors"]
+    assert content["data"]["customerBulkUpdate"]["count"] == 2
+
+    customer_1.refresh_from_db()
+    customer_2.refresh_from_db()
+    assert getattr(customer_1, model_field)[key] == value
+    assert getattr(customer_2, model_field)[key] == value
+
+    # Verify webhooks
+    assert mocked_customer_updated.call_count == 2
+    assert mocked_customer_metadata_updated.call_count == 2
+
+
+@patch("saleor.plugins.manager.PluginsManager.customer_updated")
+@patch("saleor.plugins.manager.PluginsManager.customer_metadata_updated")
+@pytest.mark.parametrize(
+    ("field", "model_field"),
+    [("metadata", "metadata"), ("privateMetadata", "private_metadata")],
+)
+def test_bulk_metadata_update_with_changed_legacy_webhook_off(
+    mocked_customer_metadata_updated,
+    mocked_customer_updated,
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+    site_settings,
+    field,
+    model_field,
+):
+    # given
+    site_settings.use_legacy_update_webhook_emission = False
+    site_settings.save(update_fields=["use_legacy_update_webhook_emission"])
+
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+    customer_1_id = graphene.Node.to_global_id("User", customer_1.pk)
+    customer_2_id = graphene.Node.to_global_id("User", customer_2.pk)
+
+    key = "test_key"
+    value = "test_value"
+    metadata = [{"key": key, "value": value}]
+    customers_input = [
+        {"id": customer_1_id, "input": {field: metadata}},
+        {"id": customer_2_id, "input": {field: metadata}},
+    ]
+    variables = {"customers": customers_input}
+
+    # when
+    response = staff_api_client.post_graphql(
+        CUSTOMER_BULK_UPDATE_MUTATION, variables, permissions=[permission_manage_users]
+    )
+
+    # then
+    content = get_graphql_content(response)
+    assert not content["data"]["customerBulkUpdate"]["results"][0]["errors"]
+    assert not content["data"]["customerBulkUpdate"]["results"][1]["errors"]
+    assert content["data"]["customerBulkUpdate"]["count"] == 2
+
+    customer_1.refresh_from_db()
+    customer_2.refresh_from_db()
+    assert getattr(customer_1, model_field)[key] == value
+    assert getattr(customer_2, model_field)[key] == value
+
+    # Verify webhooks
+    mocked_customer_updated.assert_not_called()
+    assert mocked_customer_metadata_updated.call_count == 2
+
+
+@patch("saleor.plugins.manager.PluginsManager.customer_updated")
+@patch("saleor.plugins.manager.PluginsManager.customer_metadata_updated")
+@pytest.mark.parametrize("use_legacy_update_webhook_emission", [True, False])
+def test_bulk_metadata_and_customer_data_update_sends_both_webhooks(
+    mocked_customer_metadata_updated,
+    mocked_customer_updated,
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+    site_settings,
+    use_legacy_update_webhook_emission,
+):
+    # given
+    site_settings.use_legacy_update_webhook_emission = (
+        use_legacy_update_webhook_emission
+    )
+    site_settings.save(update_fields=["use_legacy_update_webhook_emission"])
+
+    customer_1 = customer_users[0]
+    customer_2 = customer_users[1]
+    customer_1_id = graphene.Node.to_global_id("User", customer_1.pk)
+    customer_2_id = graphene.Node.to_global_id("User", customer_2.pk)
+
+    key = "test_key"
+    value = "test_value"
+    metadata = [{"key": key, "value": value}]
+    customers_input = [
+        {
+            "id": customer_1_id,
+            "input": {
+                "firstName": "UpdatedName1",
+                "metadata": metadata,
+                "privateMetadata": metadata,
+            },
+        },
+        {
+            "id": customer_2_id,
+            "input": {
+                "firstName": "UpdatedName2",
+                "metadata": metadata,
+                "privateMetadata": metadata,
+            },
+        },
+    ]
+    variables = {"customers": customers_input}
+
+    # when
+    response = staff_api_client.post_graphql(
+        CUSTOMER_BULK_UPDATE_MUTATION, variables, permissions=[permission_manage_users]
+    )
+
+    # then
+    content = get_graphql_content(response)
+    assert not content["data"]["customerBulkUpdate"]["results"][0]["errors"]
+    assert not content["data"]["customerBulkUpdate"]["results"][1]["errors"]
+    assert content["data"]["customerBulkUpdate"]["count"] == 2
+
+    customer_1.refresh_from_db()
+    customer_2.refresh_from_db()
+    assert customer_1.first_name == "UpdatedName1"
+    assert customer_2.first_name == "UpdatedName2"
+    assert customer_1.metadata[key] == value
+    assert customer_2.metadata[key] == value
+
+    # Verify both webhooks were sent
+    assert mocked_customer_updated.call_count == 2
+    assert mocked_customer_metadata_updated.call_count == 2
+
+
+def test_customer_update_existing_user_does_not_merge_with_existing_account(
+    staff_api_client,
+    staff_user,
+    customer_user,
+    gift_card,
+    order,
+    permission_manage_users,
+):
+    """Ensure customerBulkUpdate() doesn't allowing merging with existing users.
+
+    When setting the email address of a customer to an email address that already
+    is associated to an account, it should reject the change and shouldn't merge
+    the account (i.e., orders and giftcards shouldn't associated).
+
+    When there is no account associated, then it should automatically merge.
+    """
+    staff_user.user_permissions.add(permission_manage_users)
+
+    user_for_update = customer_user
+    existing_email = "existing-user@example.com"
+    existing_user = models.User.objects.create(email=existing_email)
+
+    assert user_for_update.email != existing_user.email
+
+    # Create anonymous objects assigned to the targeted email
+    order.user = gift_card.created_by = None
+    order.user_email = gift_card.created_by_email = existing_email
+    gift_card.save(update_fields=["created_by", "created_by_email"])
+    order.save(update_fields=["user", "user_email"])
+
+    # When attempting to merge onto an existing account, it should reject
+    # the request, and shouldn't assign the anonymous objects.
+    query = CUSTOMER_BULK_UPDATE_MUTATION
+    variables = {
+        "customers": [
+            {
+                "id": graphene.Node.to_global_id("User", user_for_update.pk),
+                "input": {"email": existing_email},
+            }
+        ],
+        "errorPolicy": ErrorPolicyEnum.REJECT_EVERYTHING.name,
+    }
+    response = staff_api_client.post_graphql(query, variables)
+
+    # then
+    content = get_graphql_content(response)
+    root_errors = content["data"]["customerBulkUpdate"]["errors"]
+    assert root_errors == [], "shouldn't have return errors at the root"
+    results = content["data"]["customerBulkUpdate"]["results"]
+    assert len(results) == 1
+    assert results == [
+        {
+            "customer": None,
+            "errors": [
+                {
+                    "code": "UNIQUE",
+                    "path": "input.email",
+                    "message": "User with this Email already exists.",
+                }
+            ],
+        }
+    ]
+
+    customer_user.refresh_from_db(fields=("email",))
+    assert customer_user.email != existing_email, "shoudln't have updated the customer"
+
+    gift_card.refresh_from_db(fields=("created_by", "created_by_email"))
+    assert gift_card.created_by is None, "shouldn't have merged the gift card"
+    assert gift_card.created_by_email == existing_email, (
+        "shouldn't have changed the email"
+    )
+
+    order.refresh_from_db(fields=("user", "user_email"))
+    assert order.user is None, "shouldn't have merged the gift card"
+    assert order.user_email == existing_email, "shouldn't have changed the email"
+
+    # sanity check: if the conflicting user is gone, the same update should merge
+    existing_user.delete()
+    response = staff_api_client.post_graphql(query, variables)
+    content = get_graphql_content(response)
+    root_errors = content["data"]["customerBulkUpdate"]["errors"]
+    assert root_errors == [], "shouldn't have return errors at the root"
+    results = content["data"]["customerBulkUpdate"]["results"]
+    assert len(results) == 1
+    assert len(results[0]["errors"]) == 0, "shouldn't have failed the bulk update"
+
+    result_customer = results[0]["customer"]
+    assert result_customer is not None, "should have returned the updated object"
+    assert result_customer["email"] == existing_email, "should have updated the email"
+
+    customer_user.refresh_from_db(fields=("email",))
+    assert customer_user.email == existing_email, "should have updated the customer"
+
+    gift_card.refresh_from_db(fields=("created_by", "created_by_email"))
+    assert gift_card.created_by == customer_user, "should have merged the gift card"
+    assert gift_card.created_by_email == existing_email, (
+        "shouldn't have changed the email"
+    )
+
+    order.refresh_from_db(fields=("user", "user_email"))
+    assert order.user == customer_user, "should have merged the gift card"
+    assert order.user_email == existing_email, "shouldn't have changed the email"
+
+
+CUSTOMER_BULK_UPDATE_ATTRIBUTES_MUTATION = """
+    mutation CustomerBulkUpdate($customers: [CustomerBulkUpdateInput!]!){
+        customerBulkUpdate(customers: $customers){
+            results{
+                errors {
+                    path
+                    message
+                    code
+                    attributes
+                }
+                customer{
+                    id
+                    customerType {
+                        id
+                    }
+                }
+            }
+            count
+        }
+    }
+"""
+
+
+def test_customers_bulk_update_with_customer_type_and_attributes(
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+    customer_type_with_attributes,
+    loyalty_customer_attribute,
+    description_customer_attribute,
+    default_customer_type,
+):
+    # given
+    customer = customer_users[0]
+    assert customer.customer_type != customer_type_with_attributes
+    customer_type_id = graphene.Node.to_global_id(
+        "CustomerType", customer_type_with_attributes.pk
+    )
+    value = loyalty_customer_attribute.values.get(slug="gold")
+    description_text = "Bulk-updated customer."
+    customers_input = [
+        {
+            "id": graphene.Node.to_global_id("User", customer.pk),
+            "input": {
+                "customerType": customer_type_id,
+                "attributes": [
+                    {
+                        "id": graphene.Node.to_global_id(
+                            "Attribute", loyalty_customer_attribute.pk
+                        ),
+                        "dropdown": {
+                            "id": graphene.Node.to_global_id("AttributeValue", value.pk)
+                        },
+                    },
+                    {
+                        "id": graphene.Node.to_global_id(
+                            "Attribute", description_customer_attribute.pk
+                        ),
+                        "plainText": description_text,
+                    },
+                ],
+            },
+        }
+    ]
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(
+        CUSTOMER_BULK_UPDATE_ATTRIBUTES_MUTATION, variables
+    )
+
+    # then
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+    assert data["count"] == 1
+    assert not data["results"][0]["errors"]
+    assert data["results"][0]["customer"]["customerType"]["id"] == customer_type_id
+    customer.refresh_from_db()
+    assert customer.customer_type == customer_type_with_attributes
+    assigned_values = AssignedUserAttributeValue.objects.filter(user=customer)
+    assert assigned_values.count() == 2
+    assert (
+        assigned_values.get(value__attribute=loyalty_customer_attribute).value == value
+    )
+    description_value = assigned_values.get(
+        value__attribute=description_customer_attribute
+    ).value
+    assert description_value.plain_text == description_text
+
+
+def test_customers_bulk_update_with_attribute_not_in_customer_type(
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+    customer_type,
+    loyalty_customer_attribute,
+    default_customer_type,
+):
+    # given: the attribute is not assigned to the customer type from the input
+    customer = customer_users[0]
+    assert not customer_type.customer_attributes.filter(
+        pk=loyalty_customer_attribute.pk
+    ).exists()
+    customers_input = [
+        {
+            "id": graphene.Node.to_global_id("User", customer.pk),
+            "input": {
+                "customerType": graphene.Node.to_global_id(
+                    "CustomerType", customer_type.pk
+                ),
+                "attributes": [
+                    {
+                        "id": graphene.Node.to_global_id(
+                            "Attribute", loyalty_customer_attribute.pk
+                        ),
+                        "dropdown": {"value": "gold"},
+                    }
+                ],
+            },
+        }
+    ]
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(
+        CUSTOMER_BULK_UPDATE_ATTRIBUTES_MUTATION, variables
+    )
+
+    # then
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+    assert data["count"] == 0
+    errors = data["results"][0]["errors"]
+    assert len(errors) == 1
+    assert errors[0]["path"] == "input.attributes"
+    assert errors[0]["code"] == CustomerBulkUpdateErrorCode.NOT_FOUND.name
+    assert not AssignedUserAttributeValue.objects.filter(user=customer).exists()
+
+
+def test_customers_bulk_update_with_required_attribute_value_not_provided(
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+    customer_type_with_attributes,
+    loyalty_customer_attribute,
+    default_customer_type,
+):
+    # given: a required attribute passed without any value
+    loyalty_customer_attribute.value_required = True
+    loyalty_customer_attribute.save(update_fields=["value_required"])
+    customer = customer_users[0]
+    attribute_id = graphene.Node.to_global_id(
+        "Attribute", loyalty_customer_attribute.pk
+    )
+    customers_input = [
+        {
+            "id": graphene.Node.to_global_id("User", customer.pk),
+            "input": {
+                "customerType": graphene.Node.to_global_id(
+                    "CustomerType", customer_type_with_attributes.pk
+                ),
+                "attributes": [{"id": attribute_id}],
+            },
+        }
+    ]
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(
+        CUSTOMER_BULK_UPDATE_ATTRIBUTES_MUTATION, variables
+    )
+
+    # then
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+    assert data["count"] == 0
+    errors = data["results"][0]["errors"]
+    assert len(errors) == 1
+    assert errors[0]["path"] == "input.attributes"
+    assert errors[0]["message"] == "Attribute expects a value but none were given."
+    assert errors[0]["code"] == CustomerBulkUpdateErrorCode.REQUIRED.name
+    assert errors[0]["attributes"] == [attribute_id]
+    assert not AssignedUserAttributeValue.objects.filter(user=customer).exists()
+
+
+def test_customers_bulk_update_attributes_validated_against_default_customer_type(
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+    loyalty_customer_attribute,
+    default_customer_type,
+):
+    # given: a typeless user and an attribute of the default customer type
+    default_customer_type.customer_attributes.add(loyalty_customer_attribute)
+    customer = customer_users[0]
+    customer.customer_type = None
+    customer.save(update_fields=["customer_type"])
+    value = loyalty_customer_attribute.values.get(slug="gold")
+    customers_input = [
+        {
+            "id": graphene.Node.to_global_id("User", customer.pk),
+            "input": {
+                "attributes": [
+                    {
+                        "id": graphene.Node.to_global_id(
+                            "Attribute", loyalty_customer_attribute.pk
+                        ),
+                        "dropdown": {
+                            "id": graphene.Node.to_global_id("AttributeValue", value.pk)
+                        },
+                    }
+                ],
+            },
+        }
+    ]
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(
+        CUSTOMER_BULK_UPDATE_ATTRIBUTES_MUTATION, variables
+    )
+
+    # then: the values are accepted and the user is left without a type
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+    assert data["count"] == 1
+    assert not data["results"][0]["errors"]
+    assigned_value = AssignedUserAttributeValue.objects.get(user=customer)
+    assert assigned_value.value == value
+    customer.refresh_from_db()
+    assert customer.customer_type_id is None
+
+
+@patch("saleor.plugins.manager.PluginsManager.customer_updated")
+def test_customers_bulk_update_with_only_attributes_triggers_customer_updated(
+    mocked_customer_updated,
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+    customer_type_with_attributes,
+    loyalty_customer_attribute,
+    default_customer_type,
+):
+    # given: input carrying only attributes, so no other change can
+    # trigger the customer_updated webhook
+    customer = customer_users[0]
+    customer.customer_type = customer_type_with_attributes
+    customer.save(update_fields=["customer_type"])
+    value = loyalty_customer_attribute.values.get(slug="gold")
+    customers_input = [
+        {
+            "id": graphene.Node.to_global_id("User", customer.pk),
+            "input": {
+                "attributes": [
+                    {
+                        "id": graphene.Node.to_global_id(
+                            "Attribute", loyalty_customer_attribute.pk
+                        ),
+                        "dropdown": {
+                            "id": graphene.Node.to_global_id("AttributeValue", value.pk)
+                        },
+                    }
+                ],
+            },
+        }
+    ]
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(
+        CUSTOMER_BULK_UPDATE_ATTRIBUTES_MUTATION, variables
+    )
+
+    # then
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+    assert data["count"] == 1
+    assert not data["results"][0]["errors"]
+    assigned_values = AssignedUserAttributeValue.objects.filter(user=customer)
+    assert assigned_values.get().value == value
+    mocked_customer_updated.assert_called_once_with(customer, webhooks=ANY)
+
+
+def test_customers_bulk_update_with_invalid_customer_type_id(
+    staff_api_client,
+    customer_users,
+    permission_manage_users,
+    default_customer_type,
+):
+    # given
+    customer = customer_users[0]
+    original_first_name = customer.first_name
+    original_customer_type_id = customer.customer_type_id
+    new_first_name = "BulkUpdatedName"
+    assert original_first_name != new_first_name
+    invalid_customer_type_id = graphene.Node.to_global_id("PageType", 1)
+    customers_input = [
+        {
+            "id": graphene.Node.to_global_id("User", customer.pk),
+            "input": {
+                "firstName": new_first_name,
+                "customerType": invalid_customer_type_id,
+            },
+        }
+    ]
+    variables = {"customers": customers_input}
+
+    # when
+    staff_api_client.user.user_permissions.add(permission_manage_users)
+    response = staff_api_client.post_graphql(
+        CUSTOMER_BULK_UPDATE_ATTRIBUTES_MUTATION, variables
+    )
+
+    # then
+    content = get_graphql_content(response)
+    data = content["data"]["customerBulkUpdate"]
+    assert data["count"] == 0
+    errors = data["results"][0]["errors"]
+    assert len(errors) == 1
+    assert errors[0]["path"] == "input.customerType"
+    assert errors[0]["code"] == CustomerBulkUpdateErrorCode.GRAPHQL_ERROR.name
+    assert errors[0]["message"] == (
+        f"Invalid ID: {invalid_customer_type_id}. "
+        "Expected: CustomerType, received: PageType."
+    )
+    customer.refresh_from_db()
+    assert customer.first_name == original_first_name
+    assert customer.customer_type_id == original_customer_type_id
