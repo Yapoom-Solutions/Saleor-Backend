@@ -44,6 +44,18 @@ services:
     volumes:
       - saleor-razorpay-app-db:/app/data
 
+  otp-app:
+    build:
+      context: ./apps/auth/otp
+      dockerfile: Dockerfile
+    ports:
+      - 8081:8081
+    restart: unless-stopped
+    networks:
+      - saleor-backend-tier
+    volumes:
+      - saleor-otp-app-db:/app/data
+
   db:
     image: library/postgres:15-alpine
     ports:
@@ -115,6 +127,7 @@ volumes:
     driver: local
   saleor-media:
   saleor-razorpay-app-db:
+  saleor-otp-app-db:
 
 networks:
   saleor-backend-tier:

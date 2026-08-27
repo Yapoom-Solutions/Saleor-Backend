@@ -33,6 +33,40 @@ export async function loginWithBff(email: string, password: string): Promise<Aut
 	return data;
 }
 
+export async function requestOtpWithBff(phone: string): Promise<AuthApiResponse> {
+	const response = await fetch("/api/auth/otp-request", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ phone }),
+		credentials: "same-origin",
+	});
+
+	const data = await parseAuthResponse(response);
+
+	if (!response.ok && !data.errors?.length) {
+		return { errors: [{ message: "Failed to send OTP. Please try again." }] };
+	}
+
+	return data;
+}
+
+export async function verifyOtpWithBff(phone: string, otp: string): Promise<AuthApiResponse> {
+	const response = await fetch("/api/auth/otp-confirm", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ phone, otp }),
+		credentials: "same-origin",
+	});
+
+	const data = await parseAuthResponse(response);
+
+	if (!response.ok && !data.errors?.length) {
+		return { errors: [{ message: "Verification failed. Please try again." }] };
+	}
+
+	return data;
+}
+
 export async function confirmAccountWithBff(
 	email: string,
 	token: string,

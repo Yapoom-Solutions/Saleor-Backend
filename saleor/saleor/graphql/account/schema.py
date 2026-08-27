@@ -63,6 +63,7 @@ from .mutations.authentication import (
     SetPassword,
     VerifyToken,
 )
+from .mutations.authentication.otp import OTPConfirm, OTPRequest
 from .mutations.customer_type import (
     CustomerTypeAssignAttributes,
     CustomerTypeCreate,
@@ -358,6 +359,8 @@ class AccountMutations(graphene.ObjectType):
     token_create = CreateToken.Field()
     token_refresh = RefreshToken.Field()
     token_verify = VerifyToken.Field()
+    otp_request = OTPRequest.Field()
+    otp_confirm = OTPConfirm.Field()
     tokens_deactivate_all = DeactivateAllUserTokens.Field()
 
     external_authentication_url = ExternalAuthenticationUrl.Field()

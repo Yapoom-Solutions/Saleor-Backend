@@ -987,7 +987,9 @@ BUILTIN_PLUGINS = [
 ]
 
 # Plugin discovery
-EXTERNAL_PLUGINS = []
+EXTERNAL_PLUGINS = [
+    "saleor.plugins.otp.plugin.OtpPlugin",
+]
 installed_plugins = importlib.metadata.entry_points(group="saleor.plugins")
 for entry_point in installed_plugins:
     plugin_path = f"{entry_point.module}.{entry_point.attr}"
