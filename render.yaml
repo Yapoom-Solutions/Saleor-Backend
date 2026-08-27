@@ -10,7 +10,7 @@ services:
     name: saleor-api
     env: docker
     dockerContext: ./saleor
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./saleor/Dockerfile
     plan: starter
     dockerPort: 8000
     envVars:
@@ -42,7 +42,7 @@ services:
     name: saleor-worker
     env: docker
     dockerContext: ./saleor
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./saleor/Dockerfile
     plan: starter
     dockerCommand: celery -A saleor --app=saleor.celeryconf:app worker --loglevel=info -B
     envVars:
@@ -73,7 +73,7 @@ services:
     name: saleor-otp-app
     env: docker
     dockerContext: ./apps/auth/otp
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./apps/auth/otp/Dockerfile
     plan: free
     disk:
       name: otp-data
@@ -90,7 +90,7 @@ services:
     name: saleor-razorpay-app
     env: docker
     dockerContext: ./apps/payments/razorpay
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./apps/payments/razorpay/Dockerfile
     plan: free
     disk:
       name: razorpay-data
