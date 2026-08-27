@@ -1,17 +1,18 @@
 services:
-  # 1. Redis Cache Service
+  # 1. Redis Cache Service (Free Tier)
   - type: redis
     name: saleor-redis
     plan: free
     ipAllowList: [] # restrict to internal access only
 
-  # 2. Saleor Core API (Django ASGI)
+  # 2. Saleor Core API & Celery Worker combined (Free Tier)
   - type: web
     name: saleor-api
     env: docker
     dockerContext: ./saleor
     dockerfilePath: ./saleor/Dockerfile
-    plan: starter
+    plan: free
+    dockerCommand: sh -c "celery -A saleor --app=saleor.celeryconf:app worker --loglevel=info -B & uvicorn saleor.asgi:application --host=0.0.0.0 --port=8000 --workers=1 --lifespan=auto --ws=none --no-server-header --no-access-log"
     envVars:
       - fromGroup: saleor-shared-secrets
       - key: PORT
@@ -37,67 +38,32 @@ services:
       - key: HTTP_IP_FILTER_ENABLED
         value: "False"
 
-  # 3. Celery Worker (Background Processes)
-  - type: worker
-    name: saleor-worker
-    env: docker
-    dockerContext: ./saleor
-    dockerfilePath: ./saleor/Dockerfile
-    plan: starter
-    dockerCommand: celery -A saleor --app=saleor.celeryconf:app worker --loglevel=info -B
-    envVars:
-      - fromGroup: saleor-shared-secrets
-      - key: DATABASE_URL
-        fromDatabase:
-          name: saleor-db
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: saleor-redis
-          property: connectionString
-      - key: CACHE_URL
-        fromService:
-          type: redis
-          name: saleor-redis
-          property: connectionString
-      - key: HTTP_IP_FILTER_ENABLED
-        value: "False"
-
-  # 4. OTP Auth App (Node microservice with persistent SQLite storage)
+  # 3. OTP Auth App (Free Tier, Ephemeral Storage)
   - type: web
     name: saleor-otp-app
     env: docker
     dockerContext: ./apps/auth/otp
     dockerfilePath: ./apps/auth/otp/Dockerfile
-    plan: starter
-    disk:
-      name: otp-data
-      mountPath: /app/data
-      sizeGB: 1
+    plan: free
     envVars:
       - key: PORT
         value: 80
       - key: SALEOR_API_URL
         value: https://santhiyavaathukadai.udayamarketing.in/graphql/
 
-  # 5. Razorpay Payments App (Node microservice with persistent SQLite storage)
+  # 4. Razorpay Payments App (Free Tier, Ephemeral Storage)
   - type: web
     name: saleor-razorpay-app
     env: docker
     dockerContext: ./apps/payments/razorpay
     dockerfilePath: ./apps/payments/razorpay/Dockerfile
-    plan: starter
-    disk:
-      name: razorpay-data
-      mountPath: /app/data
-      sizeGB: 1
+    plan: free
     envVars:
       - key: PORT
         value: 80
 
 databases:
-  # 6. PostgreSQL Database
+  # 5. PostgreSQL Database (Free Tier)
   - name: saleor-db
     databaseName: saleor
     user: saleor
