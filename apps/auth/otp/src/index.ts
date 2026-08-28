@@ -30,6 +30,7 @@ function getAppUrl(req: express.Request): string {
 // 1. GET /api/manifest (returns the Saleor App Manifest URL)
 app.get("/api/manifest", (req, res) => {
 	const appUrl = getAppUrl(req);
+	const internalAppUrl = process.env.INTERNAL_APP_URL || "http://otp-app:8081";
 	const manifest = {
 		id: "saleor.auth.otp",
 		version: "1.0.0",
@@ -37,7 +38,7 @@ app.get("/api/manifest", (req, res) => {
 		about: "Custom multi-tenant OTP App for Saleor using Udaya SMS Gateway",
 		permissions: ["MANAGE_USERS", "MANAGE_SETTINGS"],
 		appUrl: `${appUrl}/configuration`,
-		tokenTargetUrl: `${appUrl}/api/register`,
+		tokenTargetUrl: `${internalAppUrl}/api/register`,
 		extensions: []
 	};
 	res.json(manifest);

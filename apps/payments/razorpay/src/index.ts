@@ -26,6 +26,7 @@ function getAppUrl(req: express.Request): string {
 // 1. GET /api/manifest
 app.get("/api/manifest", (req, res) => {
 	const appUrl = getAppUrl(req);
+	const internalAppUrl = process.env.INTERNAL_APP_URL || "http://razorpay-app:8080";
 	const manifest = {
 		id: "saleor.payments.razorpay",
 		version: "1.0.0",
@@ -33,7 +34,7 @@ app.get("/api/manifest", (req, res) => {
 		about: "Custom multi-tenant Razorpay app for Saleor",
 		permissions: ["MANAGE_ORDERS", "HANDLE_PAYMENTS", "MANAGE_SETTINGS"],
 		appUrl: `${appUrl}/configuration`,
-		tokenTargetUrl: `${appUrl}/api/register`,
+		tokenTargetUrl: `${internalAppUrl}/api/register`,
 		extensions: []
 	};
 	res.json(manifest);
