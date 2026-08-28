@@ -29,8 +29,8 @@ services:
     ports:
       - 9000:80
     restart: unless-stopped
-    volumes:
-      - ./index.html:/app/dashboard/index.html:ro
+    environment:
+      - API_URL=/graphql/
 
   razorpay-app:
     build:
