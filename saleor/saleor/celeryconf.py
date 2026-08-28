@@ -1,7 +1,7 @@
 import logging
 import os
 
-from celery import Celery
+from django_tenants.celery.app import TenantApp
 from celery.signals import setup_logging, worker_process_init
 from django.conf import settings
 
@@ -29,7 +29,7 @@ def init_celery_telemetry(*args, **kwargs):
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "saleor.settings")
 
-app = Celery("saleor", task_cls="saleor.core.tasks:RestrictWriterDBTask")
+app = TenantApp("saleor", task_cls="saleor.core.tasks:RestrictWriterDBTask")
 
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
