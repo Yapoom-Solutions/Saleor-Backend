@@ -21,6 +21,12 @@ const DEFAULT_API_KEY = "e9TZX5FJ7RDzrgrP";
 const DEFAULT_SENDER_ID = "MYDTEH";
 const DEFAULT_TEMPLATE = "Use OTP {#var#} to log in to your Account. Never share your OTP with anyone . Support contact: {#var#} - My Dreams";
 
+function getAppUrl(req: express.Request): string {
+	const host = req.get("host") || `localhost:${PORT}`;
+	const proto = req.get("x-forwarded-proto") || "http";
+	return `${proto}://${host}`;
+}
+
 // 1. GET /api/manifest (returns the Saleor App Manifest URL)
 app.get("/api/manifest", (req, res) => {
 	const appUrl = getAppUrl(req);
