@@ -115,8 +115,10 @@ Domain.objects.get_or_create(
 print("SUCCESS: Tenant registered in public database.")
 EOF
 
-    echo "🛠️ Ensuring hstore extension is enabled in pg_catalog..."
+    echo "🛠️ Ensuring database extensions (hstore, pg_trgm, btree_gin) are enabled in pg_catalog..."
     docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c "ALTER EXTENSION hstore SET SCHEMA pg_catalog;" >/dev/null 2>&1 || docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS hstore SCHEMA pg_catalog;"
+    docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c "ALTER EXTENSION pg_trgm SET SCHEMA pg_catalog;" >/dev/null 2>&1 || docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA pg_catalog;"
+    docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c "ALTER EXTENSION btree_gin SET SCHEMA pg_catalog;" >/dev/null 2>&1 || docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS btree_gin SCHEMA pg_catalog;"
 
     echo "🛠️ Creating physical schema in PostgreSQL..."
     docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c "CREATE SCHEMA IF NOT EXISTS ${SCHEMA_NAME};"
