@@ -61,7 +61,7 @@ echo "✅ Database is ready."
 
 # Enable hstore extension in pg_catalog so it is available globally to all tenant schemas
 echo "🛠️ Enabling hstore extension in PostgreSQL..."
-docker compose exec -T db psql -U saleor -d saleor -c "CREATE EXTENSION IF NOT EXISTS hstore SCHEMA pg_catalog;"
+docker compose exec -T db psql -U saleor -d saleor -c "ALTER EXTENSION hstore SET SCHEMA pg_catalog;" >/dev/null 2>&1 || docker compose exec -T db psql -U saleor -d saleor -c "CREATE EXTENSION IF NOT EXISTS hstore SCHEMA pg_catalog;"
 
 # 5. Run Database Migrations (Public Schema)
 echo "🗄️ Running migrations on public schema..."
