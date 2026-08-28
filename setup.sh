@@ -61,7 +61,7 @@ echo "✅ Database is ready."
 
 # 5. Run Database Migrations (Public Schema)
 echo "🗄️ Running migrations on public schema..."
-docker compose exec -T api python manage.py migrate
+docker compose exec -T api python manage.py migrate_schemas --shared
 
 # 6. Initialize Multi-Tenant Routing
 echo "🌐 Registering Tenant and Domain details..."
