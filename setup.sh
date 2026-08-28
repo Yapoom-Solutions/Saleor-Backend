@@ -59,6 +59,10 @@ until docker compose exec -T db pg_isready -U saleor -d saleor >/dev/null 2>&1; 
 done
 echo "✅ Database is ready."
 
+# Enable hstore extension in pg_catalog so it is available globally to all tenant schemas
+echo "🛠️ Enabling hstore extension in PostgreSQL..."
+docker compose exec -T db psql -U saleor -d saleor -c "CREATE EXTENSION IF NOT EXISTS hstore SCHEMA pg_catalog;"
+
 # 5. Run Database Migrations (Public Schema)
 echo "🗄️ Running migrations on public schema..."
 docker compose exec -T api python manage.py migrate_schemas --shared
