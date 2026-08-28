@@ -23,23 +23,16 @@ const DEFAULT_TEMPLATE = "Use OTP {#var#} to log in to your Account. Never share
 
 // 1. GET /api/manifest (returns the Saleor App Manifest URL)
 app.get("/api/manifest", (req, res) => {
+	const appUrl = getAppUrl(req);
 	const manifest = {
 		id: "saleor.auth.otp",
 		version: "1.0.0",
 		name: "Udaya OTP Authentication",
 		about: "Custom multi-tenant OTP App for Saleor using Udaya SMS Gateway",
 		permissions: ["MANAGE_USERS", "MANAGE_SETTINGS"],
-		appUrl: "http://localhost:8081/configuration",
-		tokenTargetUrl: "http://otp-app:8081/api/register",
-		extensions: [
-			{
-				label: "OTP Config",
-				mount: "NAVIGATION_ADMINISTRATION",
-				target: "APP_PAGE",
-				permissions: ["MANAGE_SETTINGS"],
-				url: "http://localhost:8081/configuration"
-			}
-		]
+		appUrl: `${appUrl}/configuration`,
+		tokenTargetUrl: `${appUrl}/api/register`,
+		extensions: []
 	};
 	res.json(manifest);
 });
