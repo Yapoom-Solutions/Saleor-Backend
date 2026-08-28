@@ -86,16 +86,17 @@ Domain.objects.get_or_create(
 )
 
 # Create Store Tenant (without auto-migration to avoid locks)
-store_tenant, created = Tenant.objects.get_or_create(
-    schema_name="${TENANT_SCHEMA}",
-    defaults={
-        "name": "${TENANT_NAME}",
-        "tenant_id": "${TENANT_ID}",
-        "slug": "${TENANT_SLUG}"
-    }
-)
-store_tenant.auto_create_schema = False
-store_tenant.save()
+try:
+    store_tenant = Tenant.objects.get(schema_name="${TENANT_SCHEMA}")
+except Tenant.DoesNotExist:
+    store_tenant = Tenant(
+        schema_name="${TENANT_SCHEMA}",
+        name="${TENANT_NAME}",
+        tenant_id="${TENANT_ID}",
+        slug="${TENANT_SLUG}"
+    )
+    store_tenant.auto_create_schema = False
+    store_tenant.save()
 
 # Create Domain
 Domain.objects.get_or_create(
