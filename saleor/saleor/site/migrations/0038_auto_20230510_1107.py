@@ -12,6 +12,8 @@ def set_enable_account_confirmation_by_email_flag(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    atomic = False
+
     dependencies = [
         ("site", "0037_sitesettings_enable_account_confirmation_by_email"),
     ]
