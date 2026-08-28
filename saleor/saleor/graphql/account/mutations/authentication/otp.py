@@ -2,6 +2,7 @@ import graphene
 import requests
 from django.core.exceptions import ValidationError
 
+from .....account.error_codes import AccountErrorCode
 from .....account.models import User
 from .....core.jwt import create_access_token, create_refresh_token
 from ....core.mutations import BaseMutation
@@ -30,7 +31,7 @@ class OTPRequest(BaseMutation):
         if not plugin or not plugin.active or not plugin.service_url:
             raise ValidationError(
                 "OTP Authentication plugin is not active or configured for this tenant.",
-                code="OTP_NOT_CONFIGURED"
+                code=AccountErrorCode.DISABLED_AUTHENTICATION_METHOD.value
             )
 
         domain = info.context.get_host()
@@ -44,9 +45,9 @@ class OTPRequest(BaseMutation):
             )
             if response.status_code != 200:
                 error_msg = response.json().get("error", "Failed to send OTP")
-                raise ValidationError(error_msg, code="OTP_SEND_FAILED")
+                raise ValidationError(error_msg, code=AccountErrorCode.INVALID.value)
         except requests.RequestException as e:
-            raise ValidationError(f"Could not connect to OTP service: {str(e)}", code="OTP_SERVICE_UNAVAILABLE")
+            raise ValidationError(f"Could not connect to OTP service: {str(e)}", code=AccountErrorCode.INACTIVE.value)
 
         return OTPRequest(success=True)
 
@@ -74,7 +75,7 @@ class OTPConfirm(BaseMutation):
         if not plugin or not plugin.active or not plugin.service_url:
             raise ValidationError(
                 "OTP Authentication plugin is not active or configured for this tenant.",
-                code="OTP_NOT_CONFIGURED"
+                code=AccountErrorCode.DISABLED_AUTHENTICATION_METHOD.value
             )
 
         domain = info.context.get_host()
@@ -88,9 +89,9 @@ class OTPConfirm(BaseMutation):
             )
             if response.status_code != 200:
                 error_msg = response.json().get("error", "Verification failed")
-                raise ValidationError(error_msg, code="OTP_VERIFICATION_FAILED")
+                raise ValidationError(error_msg, code=AccountErrorCode.INVALID_CREDENTIALS.value)
         except requests.RequestException as e:
-            raise ValidationError(f"Could not connect to OTP service: {str(e)}", code="OTP_SERVICE_UNAVAILABLE")
+            raise ValidationError(f"Could not connect to OTP service: {str(e)}", code=AccountErrorCode.INACTIVE.value)
 
         # Map phone to a synthetic email unique identifier
         email = f"{phone}@otp.localhost"
