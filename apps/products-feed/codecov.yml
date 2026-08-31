@@ -1,0 +1,127 @@
+coverage:
+  status:
+    patch:
+      default:
+        target: auto
+    project:
+      default:
+        target: auto
+      app-anonymizer:
+        flags: [anonymizer]
+      app-avatax:
+        flags: [avatax]
+      app-cms:
+        flags: [cms]
+      app-klaviyo:
+        flags: [klaviyo]
+      app-onboarding:
+        flags: [onboarding]
+      app-products-feed:
+        flags: [products-feed]
+      app-search:
+        flags: [search]
+      app-segment:
+        flags: [segment]
+      app-smtp:
+        flags: [smtp]
+      app-payment-stripe:
+        flags: [stripe]
+      app-payment-np-atobarai:
+        flags: [np-atobarai]
+      app-payment-dummy:
+        flags: [dummy-payment-app]
+      app-extensions-explorer:
+        flags: [extensions-explorer]
+      packages-app-problems:
+        flags: [app-problems]
+      packages-domain:
+        flags: [domain]
+      packages-dynamo-config-repository:
+        flags: [dynamo-config-repository]
+      packages-errors:
+        flags: [errors]
+      packages-handlebars:
+        flags: [handlebars]
+      packages-logger:
+        flags: [logger]
+      packages-otel:
+        flags: [otel]
+      packages-shared:
+        flags: [shared]
+      packages-webhook-utils:
+        flags: [webhook-utils]
+ignore:
+  - "**/scripts/**"
+  - "**/e2e/**"
+  - "**/graphql/**"
+  - "**/generated/**"
+  - "**/*.config.js"
+  - "**/*.config.ts"
+
+flags:
+  anonymizer:
+    paths:
+      - apps/anonymizer/
+  avatax:
+    paths:
+      - apps/avatax/
+  cms:
+    paths:
+      - apps/cms/
+  klaviyo:
+    paths:
+      - apps/klaviyo/
+  onboarding:
+    paths:
+      - apps/onboarding/
+  products-feed:
+    paths:
+      - apps/products-feed/
+  search:
+    paths:
+      - apps/search/
+  segment:
+    paths:
+      - apps/segment/
+  smtp:
+    paths:
+      - apps/smtp/
+  stripe:
+    paths:
+      - apps/stripe/
+  np-atobarai:
+    paths:
+      - apps/np-atobarai/
+  dummy-payment-app:
+    paths:
+      - apps/dummy-payment-app/
+  extensions-explorer:
+    paths:
+      - apps/extensions-explorer/
+  app-problems:
+    paths:
+      - packages/app-problems/
+  domain:
+    paths:
+      - packages/domain/
+  dynamo-config-repository:
+    paths:
+      - packages/dynamo-config-repository/
+  errors:
+    paths:
+      - packages/errors/
+  handlebars:
+    paths:
+      - packages/handlebars/
+  logger:
+    paths:
+      - packages/logger/
+  otel:
+    paths:
+      - packages/otel/
+  shared:
+    paths:
+      - packages/shared/
+  webhook-utils:
+    paths:
+      - packages/webhook-utils/

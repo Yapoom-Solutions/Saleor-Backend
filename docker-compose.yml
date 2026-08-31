@@ -76,6 +76,23 @@ services:
       - saleor-gifts-app-db:/app/data
       - ./saleor/media:/app/media:rw
 
+  products-feed:
+    build:
+      context: ./apps/products-feed
+      dockerfile: Dockerfile
+    ports:
+      - 8083:3000
+    restart: unless-stopped
+    networks:
+      - saleor-backend-tier
+    environment:
+      - PORT=3000
+      - APP_URL=https://products-feed.udayamarketing.in
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-mock-key}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-mock-secret}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_BUCKET_NAME=${AWS_BUCKET_NAME:-mock-bucket}
+
   db:
     image: library/postgres:15-alpine
     ports:

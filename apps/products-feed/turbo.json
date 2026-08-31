@@ -1,0 +1,77 @@
+{
+  "$schema": "https://turbo.build/schema.v2.json",
+  "globalDependencies": ["**/.env.*local"],
+  "globalEnv": [
+    "APP_LOG_LEVEL",
+    "CI",
+    "ENABLE_EXPERIMENTAL_COREPACK",
+    "ENV",
+    "GITHUB_SHA",
+    "NEW_SECRET_KEY",
+    "NEXT_RUNTIME",
+    "NEXT_RUNTIME",
+    "NODE_ENV",
+    "OTEL_ACCESS_TOKEN",
+    "OTEL_ENABLED",
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_LOG_LEVEL",
+    "OTEL_SERVICE_NAME",
+    "OTEL_TRACES_SAMPLER_ARG",
+    "OTEL_TRACES_SAMPLER",
+    "PORT",
+    "REPOSITORY_URL",
+    "SENTRY_ORG",
+    "VERCEL_ENV",
+    "VERCEL_GIT_COMMIT_SHA",
+    "VERCEL_URL",
+    "VERCEL"
+  ],
+  "tasks": {
+    "topo": {
+      "dependsOn": ["^topo"]
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", ".vercel/**", "!.next/cache/**"],
+      "inputs": ["$TURBO_DEFAULT$", ".env"]
+    },
+    "check-types": {
+      "dependsOn": ["topo"]
+    },
+    "deploy": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", ".vercel/**", "!.next/cache/**"],
+      "inputs": ["$TURBO_DEFAULT$", ".env"]
+    },
+    "dev": {
+      "dependsOn": ["^dev"],
+      "cache": false,
+      "persistent": true
+    },
+    "generate": {
+      "dependsOn": ["topo"],
+      "outputs": ["generated/**"],
+      "cache": false
+    },
+    "lint": {
+      "dependsOn": ["topo"]
+    },
+    "lint:fix": {
+      "dependsOn": ["topo"]
+    },
+    "start": {
+      "dependsOn": ["^build", "^start"],
+      "cache": false,
+      "persistent": true
+    },
+    "test": {
+      "cache": false,
+      "persistent": true
+    },
+    "test:ci": {
+      "dependsOn": ["topo"],
+      "inputs": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.spec.ts", "src/**/*.spec.tsx"],
+      "outputs": ["coverage/**"]
+    }
+  }
+}

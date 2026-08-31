@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json",
+  "name": "Segment app",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "segment",
+  "workspaceFolder": "/app/apps/segment",
+  "forwardPorts": [3000, "dynamodb:8000"],
+  "portsAttributes": {
+    "3000": {
+      "label": "Segment app"
+    },
+    "dynamodb:8000": {
+      "label": "Local DynamoDB"
+    }
+  },
+  "postCreateCommand": "pnpm install --frozen-lockfile && pnpm setup-dynamodb --endpoint-url=http://dynamodb:8000",
+  "features": {
+    "ghcr.io/devcontainers/features/aws-cli": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "GraphQL.vscode-graphql-syntax",
+        "GraphQL.vscode-graphql",
+        "streetsidesoftware.code-spell-checker"
+      ]
+    }
+  }
+}

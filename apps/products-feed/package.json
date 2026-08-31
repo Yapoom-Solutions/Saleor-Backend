@@ -1,0 +1,53 @@
+{
+  "name": "saleor-apps",
+  "version": "0.0.0",
+  "private": true,
+  "license": "(BSD-3-Clause AND CC-BY-4.0)",
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "check-spelling": "cspell '**/*.{jsx,tsx,js,ts,md,mdx}'",
+    "check-types": "turbo run check-types",
+    "deploy": "turbo run deploy",
+    "dev": "turbo run dev",
+    "fetch-schema": "curl https://raw.githubusercontent.com/saleor/saleor/${npm_package_config_saleor_schemaVersion}/saleor/graphql/schema.graphql > schema.graphql",
+    "format": "prettier --write '**/*.{jsx,tsx,js,ts,md,mdx}'",
+    "generate": "turbo run generate",
+    "github:release": "pnpm changeset tag && git push --follow-tags",
+    "knip": "knip --config knip.config.ts",
+    "lint": "turbo run lint",
+    "lint-staged": "lint-staged",
+    "lint:fix": "turbo run lint:fix",
+    "lint:packages": "sherif",
+    "lint:packages:fix": "sherif --fix",
+    "prepare": "husky",
+    "start": "turbo run start",
+    "test": "turbo run test",
+    "test:ci": "turbo run test:ci"
+  },
+  "config": {
+    "saleor": {
+      "schemaVersion": "3.23"
+    }
+  },
+  "devDependencies": {
+    "@changesets/cli": "2.30.0",
+    "@cspell/cspell-types": "8.17.5",
+    "@saleor/app-sdk": "catalog:",
+    "cspell": "8.17.5",
+    "graphql": "catalog:",
+    "husky": "9.1.4",
+    "knip": "5.46.2",
+    "lint-staged": "15.5.0",
+    "prettier": "3.0.3",
+    "sherif": "1.4.0",
+    "sort-package-json": "3.0.0",
+    "turbo": "2.4.4"
+  },
+  "packageManager": "pnpm@10.28.1",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0",
+    "npm": ">=10.0.0 <11.0.0",
+    "pnpm": ">=10.0.0 <11.0.0"
+  }
+}
