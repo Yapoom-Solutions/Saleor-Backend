@@ -123,14 +123,35 @@ docker compose exec -T db psql -U saleor -d saleor -c "CREATE SCHEMA IF NOT EXIS
 echo "🗄️ Running migrations for tenant: ${TENANT_SCHEMA}..."
 docker compose exec -T api python manage.py migrate_schemas --schema=${TENANT_SCHEMA}
 
+echo "🌐 Configuring django_site domain settings inside schema ${TENANT_SCHEMA}..."
+docker compose exec -T api python manage.py shell <<EOF
+from django.db import connection
+from django.contrib.sites.models import Site
+from saleor.tenants.models import Tenant
+tenant = Tenant.objects.get(schema_name="${TENANT_SCHEMA}")
+connection.set_tenant(tenant)
+site = Site.objects.filter(pk=1).first()
+if site:
+    site.domain = "${TENANT_DOMAIN}"
+    site.name = "${TENANT_NAME}"
+    site.save()
+    print("SUCCESS: Updated site domain.")
+EOF
+
 # 9. Create Superuser for the store tenant
 echo "👤 Please configure the Administrator (Superuser) details below:"
 docker compose exec api python manage.py tenant_command createsuperuser --schema=${TENANT_SCHEMA}
 
 echo "=========================================================="
 echo "🎉 Setup Complete!"
-echo "GraphQL API: https://${TENANT_DOMAIN}/graphql/"
-echo "Admin Panel: https://${TENANT_DOMAIN}/dashboard/"
-echo "Gifts App:   https://gifts-app.udayamarketing.in/api/manifest"
+echo "GraphQL API:       https://${TENANT_DOMAIN}/graphql/"
+echo "Admin Panel:       https://${TENANT_DOMAIN}/dashboard/"
+echo ""
+echo "🔌 Custom Extension App Manifest URLs:"
+echo "----------------------------------------------------------"
+echo "OTP login App:     https://otp-app.udayamarketing.in/api/manifest"
+echo "Razorpay App:      https://razorpay-app.udayamarketing.in/api/manifest"
+echo "Gifts Shop App:    https://gifts-app.udayamarketing.in/api/manifest"
+echo "Products Feed App: https://products-feed.udayamarketing.in/api/manifest"
 echo "=========================================================="
 echo "=========================================================="
