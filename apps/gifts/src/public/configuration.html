@@ -293,7 +293,7 @@
       settingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const saveBtn = document.getElementById('save-btn');
-        const storageLimitInput = document.getElementById('storage-limit') as HTMLInputElement | null;
+        const storageLimitInput = document.getElementById('storage-limit');
         if (!storageLimitInput) return;
         
         saveBtn.disabled = true;
