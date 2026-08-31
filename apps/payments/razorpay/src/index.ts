@@ -18,6 +18,9 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Helper to construct host URLs dynamically
 function getAppUrl(req: express.Request): string {
+	if (process.env.APP_URL) {
+		return process.env.APP_URL;
+	}
 	const host = req.get("host") || `localhost:${PORT}`;
 	const proto = req.get("x-forwarded-proto") || "http";
 	return `${proto}://${host}`;

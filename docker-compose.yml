@@ -41,6 +41,8 @@ services:
     restart: unless-stopped
     networks:
       - saleor-backend-tier
+    environment:
+      - APP_URL=https://razorpay-app.udayamarketing.in
     volumes:
       - saleor-razorpay-app-db:/app/data
 
@@ -53,6 +55,8 @@ services:
     restart: unless-stopped
     networks:
       - saleor-backend-tier
+    environment:
+      - APP_URL=https://otp-app.udayamarketing.in
     volumes:
       - saleor-otp-app-db:/app/data
 
@@ -67,6 +71,7 @@ services:
       - saleor-backend-tier
     environment:
       - DATABASE_URL=postgres://saleor:saleor@db/saleor
+      - APP_URL=https://gifts-app.udayamarketing.in
     volumes:
       - saleor-gifts-app-db:/app/data
       - ./saleor/media:/app/media:rw

@@ -21,6 +21,9 @@ app.use(express.json());
 const PORT = process.env.PORT || 8082;
 
 function getAppUrl(req: express.Request): string {
+	if (process.env.APP_URL) {
+		return process.env.APP_URL;
+	}
 	const host = req.get("host") || `localhost:${PORT}`;
 	const proto = req.get("x-forwarded-proto") || "http";
 	return `${proto}://${host}`;

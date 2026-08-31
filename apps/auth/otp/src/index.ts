@@ -22,6 +22,9 @@ const DEFAULT_SENDER_ID = "MYDTEH";
 const DEFAULT_TEMPLATE = "Use OTP {#var#} to log in to your Account. Never share your OTP with anyone . Support contact: {#var#} - My Dreams";
 
 function getAppUrl(req: express.Request): string {
+	if (process.env.APP_URL) {
+		return process.env.APP_URL;
+	}
 	const host = req.get("host") || `localhost:${PORT}`;
 	const proto = req.get("x-forwarded-proto") || "http";
 	return `${proto}://${host}`;
