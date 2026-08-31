@@ -56,6 +56,19 @@ services:
     volumes:
       - saleor-otp-app-db:/app/data
 
+  gifts-app:
+    build:
+      context: ./apps/gifts
+      dockerfile: Dockerfile
+    ports:
+      - 8082:8082
+    restart: unless-stopped
+    networks:
+      - saleor-backend-tier
+    volumes:
+      - saleor-gifts-app-db:/app/data
+      - ./saleor/media:/app/media:rw
+
   db:
     image: library/postgres:15-alpine
     ports:
@@ -128,6 +141,7 @@ volumes:
   saleor-media:
   saleor-razorpay-app-db:
   saleor-otp-app-db:
+  saleor-gifts-app-db:
 
 networks:
   saleor-backend-tier:

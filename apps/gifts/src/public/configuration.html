@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gift Customizations & Storage Manager</title>
+  <!-- Google Fonts: Outfit -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Outfit', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #f3f4f6;
+    }
+    .glass-card {
+      background: rgba(17, 24, 39, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  </style>
+</head>
+<body class="min-h-screen p-6 font-sans">
+
+  <div class="max-w-6xl mx-auto space-y-6">
+    
+    <!-- Top Bar / Header -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 glass-card rounded-2xl p-6 shadow-2xl">
+      <div class="flex items-center space-x-4">
+        <div class="h-12 w-12 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-white tracking-wide">Gift Customizations</h1>
+          <p class="text-sm text-gray-400">Manage client instructions, uploaded media, and storage space</p>
+        </div>
+      </div>
+      
+      <!-- Tenant Name -->
+      <div class="px-4 py-2 bg-indigo-950/40 border border-indigo-500/20 rounded-xl flex items-center space-x-2 self-start md:self-auto">
+        <div class="h-2.5 w-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
+        <span id="active-domain" class="text-sm font-medium text-indigo-300">Loading...</span>
+      </div>
+    </div>
+
+    <!-- Grid: Storage Stats & Limit Settings -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      
+      <!-- Card: Storage Quota Meter -->
+      <div class="md:col-span-2 glass-card rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-white mb-2">Server Storage Quota</h2>
+          <p class="text-xs text-gray-400">Total space consumed by customization file uploads for this store.</p>
+        </div>
+        
+        <div class="my-6">
+          <div class="flex justify-between text-sm font-semibold mb-2">
+            <span id="storage-usage-text" class="text-gray-300">0 MB of 2048 MB used</span>
+            <span id="storage-usage-percent" class="text-indigo-400">0%</span>
+          </div>
+          <!-- Progress Bar Wrapper -->
+          <div class="w-full bg-gray-800 rounded-full h-3 overflow-hidden">
+            <div id="storage-progress-bar" class="bg-indigo-600 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <div class="text-xs text-gray-500 flex items-center space-x-1">
+          <svg class="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span>Tip: Delete files from completed/delivered orders to reclaim disk space.</span>
+        </div>
+      </div>
+
+      <!-- Card: Quota Settings -->
+      <div class="glass-card rounded-2xl p-6 shadow-xl">
+        <h2 class="text-lg font-bold text-white mb-4 font-semibold">Quota Limit</h2>
+        <form id="settings-form" class="space-y-4">
+          <div>
+            <label for="storage-limit" class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Storage Limit (MB)</label>
+            <input type="number" id="storage-limit" required min="10"
+              class="w-full bg-[#161b26] border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-indigo-500 transition-colors"
+              placeholder="e.g. 2048" />
+          </div>
+          <button type="submit" id="save-btn"
+            class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition-all shadow-lg hover:shadow-indigo-600/30">
+            Save Limit
+          </button>
+        </form>
+      </div>
+
+    </div>
+
+    <!-- Section: Customization Orders List -->
+    <div class="glass-card rounded-2xl shadow-xl overflow-hidden">
+      <div class="p-6 border-b border-gray-800">
+        <h2 class="text-lg font-bold text-white">Customization Orders Log</h2>
+        <p class="text-xs text-gray-400 mt-1">Review customizations, download client assets, or purge files.</p>
+      </div>
+      
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-gray-900/50 border-b border-gray-800 text-gray-400 text-xs font-bold uppercase tracking-wider">
+              <th class="p-4">Order #</th>
+              <th class="p-4">Product Details</th>
+              <th class="p-4">Instructions</th>
+              <th class="p-4">Media Attachment</th>
+              <th class="p-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="customizations-table-body" class="divide-y divide-gray-800/60 text-sm">
+            <tr>
+              <td colspan="5" class="p-8 text-center text-gray-500">Loading customizations...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const domain = urlParams.get('domain') || window.location.hostname;
+    document.getElementById('active-domain').textContent = domain;
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    async function loadData() {
+      try {
+        const response = await fetch(`/api/configuration?domain=${encodeURIComponent(domain)}`);
+        if (!response.ok) throw new Error('Failed to load settings');
+        
+        const data = await response.json();
+        
+        // 1. Quota meter update
+        const limitMb = data.storage_limit_mb || 2048;
+        const usedBytes = data.usedBytes || 0;
+        const limitBytes = limitMb * 1024 * 1024;
+        const usedMb = (usedBytes / (1024 * 1024)).toFixed(2);
+        const percent = Math.min(Math.round((usedBytes / limitBytes) * 100), 100);
+        
+        document.getElementById('storage-limit').value = limitMb;
+        document.getElementById('storage-usage-text').textContent = `${usedMb} MB of ${limitMb} MB used (${formatBytes(usedBytes)})`;
+        document.getElementById('storage-usage-percent').textContent = `${percent}%`;
+        
+        const progressBar = document.getElementById('storage-progress-bar');
+        progressBar.style.width = `${percent}%`;
+        
+        // Adjust progress bar color depending on usage level
+        if (percent > 90) {
+          progressBar.className = "bg-rose-600 h-full rounded-full transition-all duration-500";
+        } else if (percent > 75) {
+          progressBar.className = "bg-amber-500 h-full rounded-full transition-all duration-500";
+        } else {
+          progressBar.className = "bg-indigo-600 h-full rounded-full transition-all duration-500";
+        }
+
+        // 2. Customizations log populate
+        const tableBody = document.getElementById('customizations-table-body');
+        tableBody.innerHTML = '';
+        
+        const customizations = data.customizations || [];
+        if (customizations.length === 0) {
+          tableBody.innerHTML = `
+            <tr>
+              <td colspan="5" class="p-8 text-center text-gray-500">No customized gift order items found.</td>
+            </tr>
+          `;
+          return;
+        }
+
+        customizations.forEach((item) => {
+          const tr = document.createElement('tr');
+          tr.className = "hover:bg-gray-900/20 transition-colors";
+          
+          // Order ID / Number
+          const tdOrder = document.createElement('td');
+          tdOrder.className = "p-4 font-semibold text-white";
+          tdOrder.textContent = `Order #${item.order_number}`;
+          tr.appendChild(tdOrder);
+
+          // Product SKU & Name
+          const tdProduct = document.createElement('td');
+          tdProduct.className = "p-4";
+          tdProduct.innerHTML = `
+            <div class="font-medium text-gray-200">${item.variant_name || 'Generic Variant'}</div>
+            <div class="text-xs text-gray-500 font-mono mt-0.5">${item.variant_sku || 'N/A'}</div>
+          `;
+          tr.appendChild(tdProduct);
+
+          // Custom Instructions
+          const tdInstructions = document.createElement('td');
+          tdInstructions.className = "p-4 text-gray-300 max-w-xs break-words";
+          tdInstructions.textContent = item.instructions || 'None';
+          tr.appendChild(tdInstructions);
+
+          // Media upload details
+          const tdMedia = document.createElement('td');
+          tdMedia.className = "p-4";
+          if (item.file_url && item.file_size) {
+            const fileName = item.file_url.split('/').pop() || 'file';
+            tdMedia.innerHTML = `
+              <div class="text-xs text-gray-300 truncate max-w-[150px] font-medium" title="${fileName}">${fileName}</div>
+              <div class="text-xxs text-gray-500 mt-0.5 font-mono">${formatBytes(item.file_size)}</div>
+            `;
+          } else {
+            tdMedia.innerHTML = `<span class="text-xs text-gray-600 font-medium">No media uploaded</span>`;
+          }
+          tr.appendChild(tdMedia);
+
+          // Action buttons
+          const tdActions = document.createElement('td');
+          tdActions.className = "p-4 text-right space-x-2";
+          
+          if (item.file_url && item.file_size) {
+            tdActions.innerHTML = `
+              <a href="/api/customizations/${item.id}/download" 
+                class="inline-flex items-center px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-lg text-xs font-semibold transition-all">
+                Download
+              </a>
+              <button onclick="purgeFile('${item.id}')"
+                class="inline-flex items-center px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 border border-rose-500/20 text-rose-400 hover:text-white rounded-lg text-xs font-semibold transition-all">
+                Purge File
+              </button>
+            `;
+          } else {
+            tdActions.innerHTML = `<span class="text-xs text-gray-600 italic">N/A</span>`;
+          }
+          tr.appendChild(tdActions);
+
+          tableBody.appendChild(tr);
+        });
+
+      } catch (err) {
+        console.error('Error fetching settings/customizations:', err);
+      }
+    }
+
+    async function purgeFile(id) {
+      if (!confirm("Are you sure you want to permanently delete this media file from the server storage? This action cannot be undone!")) {
+        return;
+      }
+      try {
+        const response = await fetch(`/api/customizations/${id}/file`, {
+          method: 'DELETE'
+        });
+        if (response.ok) {
+          loadData(); // Reload stats and lists
+        } else {
+          alert('Failed to delete file');
+        }
+      } catch (err) {
+        alert('Network error. Failed to delete file.');
+      }
+    }
+
+    // Settings Submit
+    document.getElementById('settings-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const saveBtn = document.getElementById('save-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      const limitMb = document.getElementById('storage-limit').value;
+
+      try {
+        const response = await fetch('/api/configuration', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            domain: domain,
+            storage_limit_mb: limitMb
+          })
+        });
+        if (response.ok) {
+          loadData();
+        } else {
+          alert('Failed to save configuration');
+        }
+      } catch (err) {
+        alert('Network error. Failed to save.');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Limit';
+      }
+    });
+
+    // Initial Load
+    loadData();
+  </script>
+</body>
+</html>
