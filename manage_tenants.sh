@@ -126,6 +126,21 @@ EOF
     echo "🗄️ Running migrations for tenant: ${SCHEMA_NAME} (this can take 30-40 seconds)..."
     docker compose exec -T api python manage.py migrate_schemas --schema="$SCHEMA_NAME"
 
+    echo "🌐 Configuring django_site domain settings inside schema ${SCHEMA_NAME}..."
+    docker compose exec -T api python manage.py shell <<EOF
+from django.db import connection
+from django.contrib.sites.models import Site
+from saleor.tenants.models import Tenant
+tenant = Tenant.objects.get(schema_name="${SCHEMA_NAME}")
+connection.set_tenant(tenant)
+site = Site.objects.filter(pk=1).first()
+if site:
+    site.domain = "${DOMAIN_NAME}"
+    site.name = "${STORE_NAME}"
+    site.save()
+    print("SUCCESS: Updated site domain.")
+EOF
+
     if [ "$CREATE_ADMIN" = "y" ]; then
         echo "👤 Creating Admin Superuser..."
         docker compose exec -T -e DJANGO_SUPERUSER_EMAIL="$ADMIN_EMAIL" -e DJANGO_SUPERUSER_PASSWORD="$ADMIN_PASSWORD" api python manage.py tenant_command createsuperuser --schema="$SCHEMA_NAME" --noinput
