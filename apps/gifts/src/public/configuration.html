@@ -256,6 +256,16 @@
 
       } catch (err) {
         console.error('Error fetching settings/customizations:', err);
+        const tableBody = document.getElementById('customizations-table-body');
+        if (tableBody) {
+          tableBody.innerHTML = `
+            <tr>
+              <td colspan="5" class="p-8 text-center text-rose-500 font-semibold">
+                Error loading customizations: ${err.message || err}
+              </td>
+            </tr>
+          `;
+        }
       }
     }
 
