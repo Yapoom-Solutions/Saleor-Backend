@@ -1,151 +1,97 @@
-![Saleor Apps](https://user-images.githubusercontent.com/44495184/208925145-78c5022c-1a6c-4f2c-8f4f-7500e7afcaf0.png)
-
-<div align="center">
-  <h1>Saleor Apps</h1>
+<div style="text-align: center">
+  <img width="150" alt="" src="./public/logo.png">
 </div>
 
-<div align="center">
-  <p>The central space for Saleor Apps, Integrations and Marketplace.
+<div style="text-align: center">
+  <h1>Saleor App Product Feed</h1>
+
+  <p>The Product Feed app allows generating an XML file with products and their details. The file can be used as a feed source for Google Merchant Center.</p>
 </div>
 
-<div align="center">
-  <a href="https://saleor.io/">🏠 Website</a>
-  <span> • </span>
-  <a href="https://docs.saleor.io/">📚 Docs</a>
-  <span> • </span>
-  <a href="https://saleor.io/blog/">📰 Blog</a>
-  <span> • </span>
-  <a href="https://twitter.com/getsaleor">🐦 Twitter</a>
-  <span> • </span>
-  <a href="https://saleor.io/discord">💬 Discord</a>
+<div style="text-align: center">
+  <a target="_blank" rel="noopener noreferrer" href="https://docs.saleor.io/developer/app-store/apps/product-feed">Docs</a>
+<br><br>
 </div>
 
-<div align="center">
-  <a href="https://docs.saleor.io/developer/extending/apps/quickstart">🆕 Apps Quickstart</a>
-  <span> • </span>
-  <a href="https://github.com/saleor/apps/discussions/categories/integrations-features">✍️ Propose an app</a>
-</div>
+### How to use this project
 
-<br/>
+#### Requirements
 
-## Overview
+- [node v22](https://nodejs.org)
+- [pnpm](https://pnpm.io/)
+- [ngrok](https://ngrok.com/)
+- Saleor Cloud account (free!) or local instance
+- AWS S3 bucket (if you want to store your XML file in an S3 bucket)
 
-This repository serves as a starting point in the exploration of Saleor apps.
+#### Running app locally in development containers
 
-> _Saleor apps are separate applications that use GraphQL to talk to the Saleor server and receive webhooks with event notifications from Saleor._
->
-> [docs.saleor.io](https://docs.saleor.io/developer/extending/apps/overview)
+> [!IMPORTANT]
+> You can use the devcontainer Dockerfile and docker-compose.yaml directly - but remember to run `pnpm install` manually
 
-### Apps list
+The easiest way to run Saleor for local development is to use [development containers](https://containers.dev/).
+If you have Visual Studio Code, follow their [guide](https://code.visualstudio.com/docs/devcontainers/containers#_quick-start-open-an-existing-folder-in-a-container) on how to open an existing folder in a container.
 
-In the `apps` folder, you will find the following applications:
+The development container only creates a container; you still need to start the server.
 
-- [AvaTax](./apps/avatax) - calculates dynamic taxes via AvaTax API.
-- [CMS](./apps/cms) - exports products from Saleor to CMS.
-- [Klaviyo](./apps/klaviyo) - send Saleor events to Klaviyo, where you can notify customers.
-- [Products feed](./apps/products-feed) - generates product feed XML.
-- [Search](./apps/search) - connects Saleor with search engines.
-- [Segment](./apps/segment/) - connects Saleor with Twilio Segment.
-- [SMTP](./apps/smtp) - enables email communication with customers.
-- [Stripe](./apps/stripe/) - connects Saleor with Stripe.
-- [NP Atobarai](./apps/np-atobarai/) - connects Saleor with NP Atobarai (Japanese: NP 後払い).
+The development container will have a port opened:
 
-#### Example apps
+1. `3000` - where the app dev server will listen for requests
 
-- [Slack integration app example](https://github.com/saleor/examples/tree/main/example-app-slack)
-- [Taxjar integration app example](https://github.com/saleor/examples/tree/main/example-app-taxjar)
-- [Invoices app example](https://github.com/saleor/examples/tree/main/example-app-invoices)
-- [CRM app example](https://github.com/saleor/examples/tree/main/example-app-crm)
-- [Sendgrid integration app example](https://github.com/saleor/examples/tree/main/example-app-sendgrid)
+#### Running app in development mode
 
-## Development
-
-You can find the documentation for saleor/apps on [docs.saleor.io](https://docs.saleor.io/developer/extending/apps/local-app-development).
-
-### PNPM and corepack
-
-Due to an issue with [outdated signatures in Corepack](https://github.com/nodejs/corepack/issues/612), Corepack should be updated to its latest version first:
+1. Install the dependencies by running the following command in the shell:
 
 ```shell
-npm install --global corepack@latest
+pnpm install
 ```
 
-After that, run this command to install pnpm with the proper version:
+2. Create a file named `.env` and use the contents of the [`.env.example`](./.env.example) file as a reference.
+
+3. Start the development server by running the following command in the shell:
 
 ```shell
-corepack enable pnpm
+pnpm dev
 ```
 
-### Turborepo
+4. The Products feed app will be available under `http://localhost:3000`
 
-This repository uses [Turborepo](https://turbo.build/) remote caching. If you are a Saleor employee, you can leverage it by running the following commands in the root of this repository:
+5. Tunnel the app by running:
 
 ```shell
-pnpm dlx turbo login
-pnpm dlx turbo link
+ngrok http localhost:3000
 ```
 
-### Installing new packages
+> [!NOTE]
+> See [How to tunnel an app](https://docs.saleor.io/developer/extending/apps/developing-with-tunnels) for more info.
 
-This has following requirements for improved supply chain security:
+6. Go to Dashboard, open `Apps` tab and click `Install external app`, provide your tunnel URL with the path for the manifest file. For example `${YOUR_TUNNEL_URL}/api/manifest`
 
-- Packages must be older than 21 days
-- Added packages must use exact version (no `^` or `~`)
-- Packages versions cannot have a downgraded provenance security
-- All installs are using froze lockfile to prevent unintended changes in transitive dependencies, to update packages anyway, you must use: `pnpm install --no-frozen-lockfile`
+### Configuration
 
-## ADR
+[Here](./docs/configuration.md) you can find doc how configure the app
 
-This repository uses [architecture decision records](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions) to document architectural decisions. You can find them in the `adr` directory.
+### Generated schema and typings
 
-To add a new ADR, follow [the guide](https://github.com/npryce/adr-tools).
+Commands `build` and `dev` would generate schema and typed functions using Saleor's GraphQL endpoint. Commit `generated` folder to your repo as they are necessary for queries and keeping track of the schema changes.
 
-## Contributing
+[Learn more](https://www.graphql-code-generator.com/) about GraphQL code generation.
 
-We love your contributions and do our best to provide you with mentorship and support. However, please keep in mind that the `saleor/apps` monorepo is used by Saleor to host apps in Saleor infrastructure. While the code remains open source, the decisions in this repository are made to enable Saleor to maintain features needed by its business goals.
+### Storing registration data - APL
 
-If you are looking for an issue to tackle, take a look at issues labeled [`Good first issue`](https://github.com/saleor/apps/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22+) and [`Help wanted`](https://github.com/saleor/apps/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22).
+During the registration process, Saleor API passes the auth token to the app. With this token, the app can query Saleor API with privileged access (depending on permissions requested during installation).
+To store this data, the app-template uses a different [APL interface](https://docs.saleor.io/developer/extending/apps/developing-apps/app-sdk/apl).
 
-If nothing grabs your attention, check [our roadmap](https://saleor.io/roadmap) or [start a Discord discussion](https://saleor.io/discord) about a feature you'd like to see. Make sure to read our [Contribution Guidelines](http://docs.saleor.io/developer/community/contributing) before opening a PR or issue.
+The choice of the APL is done using `APL` environment variable. If the value is not set, FileAPL is used. Available choices:
 
-## Forking 
+- `file`: no additional setup is required. Good choice for local development. Can't be used for multi tenant-apps or be deployed (not intended for production)
+- `upstash`: use [Upstash](https://upstash.com/) Redis as storage method. Free account required. Can be used for development and production and supports multi-tenancy. Requires `UPSTASH_URL` and `UPSTASH_TOKEN` environment variables to be set
 
-You can fork this repository to modify and self-host one of the apps. Keep in mind that this is a monorepo, which adds two additional steps to the process:
-- When forking, all the apps are forked, even if you need only one.
-- There are shared dependencies between apps, stored in the `packages/` folder. Even if you need only one app, you still need at least some packages.
+If you want to use your own database, you can implement your own APL. [Check the documentation to read more.](https://docs.saleor.io/developer/extending/apps/developing-apps/app-sdk/apl)
 
-You can try two techniques to fork the repository:
-1. You can fork everything and keep everything. When you back-merge changes, unused apps will be updated without any issues. You need to ensure you run scripts from the context of the app you are interested in, e.g., `cd apps/avatax && pnpm dev`. Your tooling should be configured to ignore other apps for better performance.
-2. You can fork everything and remove the apps you don't need. It will reduce the number of files in your fork, but you may need to modify some scripts to ensure they work properly (e.g., if some root scripts expect multiple apps, they may fail).
+### Learn more about Saleor Apps
 
+[Apps guide](https://docs.saleor.io/developer/extending/apps/overview)
 
-## Deployment
+## OTEL
 
-Apps are written in Next.js and are hosted on Vercel by Saleor. Everyone should be able to host an app on Vercel if the app is configured properly. Apps share common code, but some of the functionalities are app-specific. For example, AvaTax and Segment apps require DynamoDB to run. Check each app's "env" files to verify what must be provided to deploy.
-
-### Docker
-
-The repository contains [Devcontainers](https://containers.dev/) setup which includes Dockerfiles. They are meant for development. At the moment, Saleor doesn't provide official production Dockerfiles. Feel free to write your own, based on the development ones.
-
-### APLs
-
-Apps follow the BYOA (bring your own APL) approach. A minimal set of APLs are implemented in the source code, to avoid maintaining unused dependencies and increasing bundle size. You may want to use another APL client, like Redis. In such a case, please ensure your fork does the job. Usually apps contain a single file that imports APL from `@saleor/app-sdk`. Your fork can ensure this file contains your own APL setup.
-
-### MCP
-
-To help AI agents properly interact with Saleor, you can use the [Model Context Protocol](https://modelcontextprotocol.io/introduction), which can interact with Saleor by understanding the GraphQL schema.
-
-Start by populating the `.env` file under the `mcp` folder with:
-
-```
-MCP_GRAPHQL_ENDPOINT= # Saleor API endpoint (ends with /graphql/)
-MCP_GRAPHQL_TOKEN= # local app token (see https://docs.saleor.io/api-usage/authentication#app-authentication for more details)
-```
-
-Make sure that you don't use quotes in env variables (as they will be loaded by the bash script).
-
-Then follow your editor's docs to get started with MCP:
-
-- [VS Code](https://code.visualstudio.com/docs/copilot/chat/mcp-servers)
-- [Cursor](https://docs.cursor.com/context/model-context-protocol#configuration-locations)
-- [JetBrains IDE](https://www.jetbrains.com/help/ai-assistant/configure-an-mcp-server.html)
+Visit `@saleor/apps-otel` [README](../../packages/otel/README.md) to learn how to run app with OTEL locally.

@@ -1,3 +1,2 @@
-.changeset
-pnpm-lock.yaml
-generated/**
+generated
+graphql/schema.graphql

@@ -46,7 +46,7 @@ savePrefix: ""
 cleanupUnusedCatalogs: true
 
 packages:
-  - apps/*
+  - .
   - packages/*
   - templates/*
 
