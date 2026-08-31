@@ -159,8 +159,10 @@
         const limitBytes = limitMb * 1024 * 1024;
         const usedMb = (usedBytes / (1024 * 1024)).toFixed(2);
         const percent = Math.min(Math.round((usedBytes / limitBytes) * 100), 100);
-        
-        document.getElementById('storage-limit').value = limitMb;
+        const storageLimitEl = document.getElementById('storage-limit');
+        if (storageLimitEl) {
+          storageLimitEl.value = limitMb;
+        }
         document.getElementById('storage-usage-text').textContent = `${usedMb} MB of ${limitMb} MB used (${formatBytes(usedBytes)})`;
         document.getElementById('storage-usage-percent').textContent = `${percent}%`;
         
@@ -276,35 +278,41 @@
     }
 
     // Settings Submit
-    document.getElementById('settings-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const saveBtn = document.getElementById('save-btn');
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving...';
+    const settingsForm = document.getElementById('settings-form');
+    if (settingsForm) {
+      settingsForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const saveBtn = document.getElementById('save-btn');
+        const storageLimitInput = document.getElementById('storage-limit') as HTMLInputElement | null;
+        if (!storageLimitInput) return;
+        
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
 
-      const limitMb = document.getElementById('storage-limit').value;
+        const limitMb = storageLimitInput.value;
 
-      try {
-        const response = await fetch('/api/configuration', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            domain: domain,
-            storage_limit_mb: limitMb
-          })
-        });
-        if (response.ok) {
-          loadData();
-        } else {
-          alert('Failed to save configuration');
+        try {
+          const response = await fetch('/api/configuration', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              domain: domain,
+              storage_limit_mb: limitMb
+            })
+          });
+          if (response.ok) {
+            loadData();
+          } else {
+            alert('Failed to save configuration');
+          }
+        } catch (err) {
+          alert('Network error. Failed to save.');
+        } finally {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save Limit';
         }
-      } catch (err) {
-        alert('Network error. Failed to save.');
-      } finally {
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'Save Limit';
-      }
-    });
+      });
+    }
 
     // Initial Load
     loadData();
