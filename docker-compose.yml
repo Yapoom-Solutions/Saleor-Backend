@@ -92,6 +92,8 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-mock-secret}
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - AWS_BUCKET_NAME=${AWS_BUCKET_NAME:-mock-bucket}
+      - SECRET_KEY=${PRODUCTS_FEED_SECRET_KEY:-default_products_feed_secret_key_change_me}
+      - REQUEST_SECRET=${PRODUCTS_FEED_REQUEST_SECRET:-default_products_feed_request_secret_change_me}
 
   db:
     image: library/postgres:15-alpine
