@@ -75,3 +75,158 @@ server {
     }
 }
 ```
+
+---
+
+## 💻 Storefront GraphQL Integration Guide
+
+Customers interact with OTP authentication directly using standard GraphQL mutations against the Saleor GraphQL endpoint (`/graphql/`).
+
+### Step 1: Request OTP (`otpRequest` Mutation)
+
+Call the `otpRequest` mutation passing the customer's phone number:
+
+```graphql
+mutation RequestPhoneOTP($phone: String!) {
+  otpRequest(phone: $phone) {
+    success
+    errors {
+      field
+      message
+      code
+    }
+  }
+}
+```
+
+**GraphQL Variables**:
+```json
+{
+  "phone": "+919876543210"
+}
+```
+
+**JavaScript Example**:
+```javascript
+const response = await fetch('https://santhiyavaathukadai.udayamarketing.in/graphql/', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    query: `
+      mutation RequestPhoneOTP($phone: String!) {
+        otpRequest(phone: $phone) {
+          success
+          errors {
+            message
+          }
+        }
+      }
+    `,
+    variables: { phone: "+919876543210" }
+  })
+});
+const result = await response.json();
+if (result.data.otpRequest.success) {
+  console.log('OTP sent successfully to +919876543210');
+}
+```
+
+---
+
+### Step 2: Confirm OTP & Authenticate User (`otpConfirm` Mutation)
+
+When the user enters the received 6-digit code, call `otpConfirm`. Upon successful verification, Saleor returns the JWT access token and refresh token:
+
+```graphql
+mutation ConfirmPhoneOTP($phone: String!, $otp: String!) {
+  otpConfirm(phone: $phone, otp: $otp) {
+    token
+    refreshToken
+    csrfToken
+    user {
+      id
+      email
+    }
+    errors {
+      field
+      message
+      code
+    }
+  }
+}
+```
+
+**GraphQL Variables**:
+```json
+{
+  "phone": "+919876543210",
+  "otp": "482910"
+}
+```
+
+**JavaScript Example & Storing Session**:
+```javascript
+const response = await fetch('https://santhiyavaathukadai.udayamarketing.in/graphql/', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    query: `
+      mutation ConfirmPhoneOTP($phone: String!, $otp: String!) {
+        otpConfirm(phone: $phone, otp: $otp) {
+          token
+          refreshToken
+          user {
+            id
+            email
+          }
+          errors {
+            message
+          }
+        }
+      }
+    `,
+    variables: { phone: "+919876543210", otp: "482910" }
+  })
+});
+
+const result = await response.json();
+const { token, refreshToken, user } = result.data.otpConfirm;
+
+// Save token in localStorage or HttpOnly cookie for authenticated storefront requests
+localStorage.setItem('auth_token', token);
+```
+
+---
+
+### Step 3: Making Authenticated GraphQL Requests
+
+Pass the received JWT token in the `Authorization` header for subsequent storefront operations (checkout, order history, profile):
+
+```javascript
+const authenticatedResponse = await fetch('https://santhiyavaathukadai.udayamarketing.in/graphql/', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+  },
+  body: JSON.stringify({
+    query: `
+      query GetUserProfile {
+        me {
+          id
+          email
+          orders(first: 5) {
+            edges {
+              node {
+                id
+                number
+              }
+            }
+          }
+        }
+      }
+    `
+  })
+});
+```
+

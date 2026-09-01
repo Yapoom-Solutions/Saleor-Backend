@@ -72,3 +72,124 @@ server {
     }
 }
 ```
+
+---
+
+## 💻 Storefront GraphQL Integration Guide
+
+The storefront browser interacts exclusively through standard **Saleor GraphQL mutations**, ensuring clean separation and complete multi-tenant security.
+
+### Step 1: Pre-Upload Quota Check (Optional)
+Before allowing a customer to upload large assets, query the Gifts app quota endpoint to verify disk space availability:
+
+```javascript
+const res = await fetch('https://gifts-app.udayamarketing.in/api/quota-check?domain=santhiyavaathukadai.udayamarketing.in');
+const quota = await res.json();
+
+if (!quota.ok) {
+  alert('Store storage quota reached. Please contact shop administration.');
+}
+```
+
+---
+
+### Step 2: Upload Customer File via Saleor GraphQL (`fileUpload`)
+Upload the file using Saleor's native `fileUpload` mutation:
+
+```graphql
+mutation UploadCustomizationFile($file: Upload!) {
+  fileUpload(file: $file) {
+    uploadedFile {
+      url
+      contentType
+    }
+    errors {
+      field
+      message
+    }
+  }
+}
+```
+
+**JavaScript Example**:
+```javascript
+const formData = new FormData();
+formData.append('operations', JSON.stringify({
+  query: `
+    mutation UploadCustomizationFile($file: Upload!) {
+      fileUpload(file: $file) {
+        uploadedFile {
+          url
+        }
+        errors {
+          field
+          message
+        }
+      }
+    }
+  `,
+  variables: { file: null }
+}));
+formData.append('map', JSON.stringify({ '0': ['variables.file'] }));
+formData.append('0', fileInput.files[0]);
+
+const response = await fetch('https://santhiyavaathukadai.udayamarketing.in/graphql/', {
+  method: 'POST',
+  body: formData
+});
+const result = await response.json();
+const uploadedFileUrl = result.data.fileUpload.uploadedFile.url;
+```
+
+---
+
+### Step 3: Add Customized Product Variant to Cart (`checkoutLinesAdd`)
+Attach the returned `uploadedFileUrl` and customer text instructions as line metadata when adding the variant to the checkout:
+
+```graphql
+mutation AddCustomizedItemToCart($checkoutId: ID!, $lines: [CheckoutLineInput!]!) {
+  checkoutLinesAdd(checkoutId: $checkoutId, lines: $lines) {
+    checkout {
+      id
+      lines {
+        id
+        quantity
+        variant {
+          id
+          name
+        }
+        metadata {
+          key
+          value
+        }
+      }
+    }
+    errors {
+      field
+      message
+    }
+  }
+}
+```
+
+**GraphQL Variables**:
+```json
+{
+  "checkoutId": "Q2hlY2tvdXQ6ZjQ3YTgwYjctZjVjMC00ZDA4LWJkNDEt...",
+  "lines": [
+    {
+      "variantId": "UHJvZHVjdFZhcmlhbnQ6MQ==",
+      "quantity": 1,
+      "metadata": [
+        { "key": "file_url", "value": "https://santhiyavaathukadai.udayamarketing.in/media/file_uploads/greeting_card.png" },
+        { "key": "instructions", "value": "Print 'Happy 25th Birthday Anish!' on the wooden frame." }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### Step 4: Automatic Order Processing & Admin Dashboard
+When the customer completes checkout (`checkoutComplete`), Saleor automatically copies the `CheckoutLine` metadata into the permanent `OrderLine` metadata. The Gifts app webhook intercepts `ORDER_CREATED`, indexes the file path and size, and displays it in the Saleor Dashboard for staff review and file purging.
