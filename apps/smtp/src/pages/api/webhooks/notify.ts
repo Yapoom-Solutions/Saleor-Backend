@@ -1,0 +1,109 @@
+import { type NextJsWebhookHandler, SaleorAsyncWebhook } from "@saleor/app-sdk/handlers/next";
+import { wrapWithLoggerContext } from "@saleor/apps-logger/node";
+import { withSpanAttributes } from "@saleor/apps-otel/src/with-span-attributes";
+import { captureException } from "@sentry/nextjs";
+
+import {
+  notifyEventMapping,
+  type NotifySubscriptionPayload,
+} from "../../../lib/notify-event-types";
+import { createLogger } from "../../../logger";
+import { loggerContext } from "../../../logger-context";
+import { handleUseCaseErrors } from "../../../modules/event-handlers/send-event-messages-response-handler";
+import { SendEventMessagesUseCaseFactory } from "../../../modules/event-handlers/use-case/send-event-messages.use-case.factory";
+import { saleorApp } from "../../../saleor-app";
+
+/*
+ * The Notify webhook is triggered on multiple Saleor events.
+ * Type of the message is determined by `notify_event` field in the payload.
+ */
+
+export const notifyWebhook = new SaleorAsyncWebhook<NotifySubscriptionPayload>({
+  name: "notify",
+  webhookPath: "api/webhooks/notify",
+  event: "NOTIFY_USER",
+  apl: saleorApp.apl,
+  query: "{}", // We are using the default payload instead of subscription
+});
+
+const logger = createLogger(notifyWebhook.webhookPath);
+
+const useCaseFactory = new SendEventMessagesUseCaseFactory();
+
+export const handler: NextJsWebhookHandler<NotifySubscriptionPayload> = async (
+  _req,
+  res,
+  context,
+) => {
+  logger.info("Webhook received");
+
+  const { payload, authData } = context;
+
+  const { channel_slug: channel, recipient_email: recipientEmail } = payload.payload;
+
+  /**
+   * Since NOTIFY can be send on events unrelated to this app, lack of mapping means the App does not support it
+   * Some events are not supported by the SMTP app, but we can still add them to the log context
+   */
+  const event = notifyEventMapping[payload.notify_event];
+
+  loggerContext.set("event", event);
+
+  if (!recipientEmail?.length) {
+    logger.error(`The email recipient has not been specified in the event payload.`);
+
+    return res
+      .status(200)
+      .json({ error: "Email recipient has not been specified in the event payload." });
+  }
+
+  if (!event) {
+    loggerContext.set("event", payload.notify_event);
+
+    logger.info(`The type of received notify event (${payload.notify_event}) is not supported.`);
+
+    return res.status(200).json({ message: `${payload.notify_event} event is not supported.` });
+  }
+
+  const useCase = useCaseFactory.createFromAuthData(authData);
+
+  try {
+    return useCase
+      .sendEventMessages({
+        channelSlug: channel,
+        event,
+        payload: payload.payload,
+        recipientEmail,
+        saleorApiUrl: authData.saleorApiUrl,
+      })
+      .then((result) =>
+        result.match(
+          () => {
+            logger.info("Successfully sent email(s)");
+
+            return res.status(200).json({ message: "The event has been handled" });
+          },
+          (errors) => handleUseCaseErrors({ errors, logger, res }),
+        ),
+      );
+  } catch (e) {
+    logger.error("Unhandled error from useCase", {
+      error: e,
+    });
+
+    captureException(e);
+
+    return res.status(500).send("Failed to execute webhook");
+  }
+};
+
+export default wrapWithLoggerContext(
+  withSpanAttributes(notifyWebhook.createHandler(handler)),
+  loggerContext,
+);
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};

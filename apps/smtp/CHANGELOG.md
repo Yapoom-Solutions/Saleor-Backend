@@ -1,0 +1,855 @@
+# saleor-app-smtp
+
+## 2.7.2
+
+### Patch Changes
+
+- Updated dependencies [d78dcb0]
+- Updated dependencies [d78dcb0]
+  - @saleor/apps-shared@1.15.0
+  - @saleor/apps-ui@1.4.0
+
+## 2.7.1
+
+### Patch Changes
+
+- 546b559: Updated Macaw UI to v2. Icons that used to come from Macaw UI (close, trash, edit, chevrons, arrows, copy, external link, and others) now come from Lucide, so a few icons look slightly different but keep the same meaning and placement.
+
+## 2.7.0
+
+### Minor Changes
+
+- 196cbf7: Added a "Custom variables" section to each SMTP configuration. You can now define your own global key-value pairs (e.g. `storefrontUrl`, `supportEmail`) instead of hard-coding them into templates, and reference them in any email template for that configuration as `{{customVariables.yourKey}}`.
+
+  Before: values like the storefront URL had to be pasted into every template by hand and updated in many places. After: define them once per configuration and use `{{customVariables.storefrontUrl}}` everywhere; the live template preview and editor autocomplete reflect your saved values (branding values now show in the preview too).
+
+## 2.6.0
+
+### Minor Changes
+
+- 518e484: The `ORDER_CREATED` email template payload now exposes the order's transactions, including payment method details (e.g. card brand and last digits, or gift card), charged amount and authorized amount. This lets you show which payment method(s) were used in your email templates, including split payments. The example templates were updated to demonstrate rendering this data.
+
+  Note: this requires Saleor 3.22 or newer (the minimum required version was bumped from 3.21), because transaction payment method details were added in Saleor 3.22.
+
+### Patch Changes
+
+- d72747d: Fixed SMTP order template saving so templates are validated with the matching event example payload instead of an empty payload. Templates that preview correctly for `ORDER_CREATED` can now be saved correctly.
+
+## 2.5.1
+
+### Patch Changes
+
+- a6c95f7: Fixed saving an email event configuration with an invalid template (e.g. a Handlebars helper called with the wrong argument type) returning a generic "Internal server error". These template problems are now reported as validation errors, so the UI shows the actual reason (for example "expected the first argument to be a number") instead of an unexpected server error. As a side effect, invalid-template attempts are no longer reported as application errors in monitoring.
+
+## 2.5.0
+
+### Minor Changes
+
+- f7f0e74: Minimum Saleor version required is now 3.21 (Saleor 3.20 is EOL)
+
+### Patch Changes
+
+- 686ff4d: Fixed the default "Gift card sent" email template so it shows the full redeemable gift card code instead of the masked display code. Before, the email rendered `giftCard.displayCode`, which only contains the last 4 characters of the code, so customers could not actually redeem the gift card. Now the template uses `giftCard.code` and shows the complete code.
+
+## 2.4.0
+
+### Minor Changes
+
+- 164454d: Implemented APP_DELETED handler. On Saleor 3.23+ app will react to its own removal and prune APL data
+
+### Patch Changes
+
+- c8a4efe: When environment variables fail validation at startup, the app now prints a readable error message and the offending fields, then exits with code 1 — instead of dumping a long stack trace. Before: a wall of webpack stack frames around `Invalid environment variables`. After: e.g. `Validation error: Required at "SECRET_KEY"` followed by a JSON list of the failing fields.
+- 8238117: Fixed the "Fallback behavior" section on the configuration page being stuck in a loading state for apps installed before the fallback setting was introduced. Previously, configurations saved without the fallback setting caused the section to show a skeleton loader forever. Now the section loads correctly, with the fallback disabled by default.
+- Updated dependencies [6683590]
+  - @saleor/webhook-utils@0.3.0
+
+## 2.3.6
+
+### Patch Changes
+
+- 9044c32: Upgraded protobufjs to v7.5.8 to fix the following CVEs: CVE-2026-41242,
+  CVE-2026-44290, CVE-2026-44291, CVE-2026-44292, CVE-2026-44293,
+  CVE-2026-44294, CVE-2026-44295, CVE-2026-45740.
+
+  This is only relevant for you if you use & enabled OpenTelemetry.
+
+## 2.3.5
+
+### Patch Changes
+
+- 5e9143c: You can now configure an email template for the "Customer account password setup" event. Previously, when you created a customer via the `customerCreate` mutation with a `redirectUrl`, Saleor emitted a notification but the SMTP app silently ignored it — no password-setup email was sent. The event is now wired through the existing NOTIFY pipeline alongside the existing password-reset event, with its own default template ("Set your password") and the `{{password_set_url}}` variable bound to Saleor's set-password URL.
+
+## 2.3.4
+
+### Patch Changes
+
+- 2865a4f: Upgraded next.js to v15.5.18, more info: https://vercel.com/changelog/next-js-may-2026-security-release
+
+## 2.3.3
+
+### Patch Changes
+
+- 4af78c1: Failed JWT verification in tRPC procedures no longer reports to Sentry as an error. Before, an expired or invalid token raised a 500 (or 403) and produced an error in monitoring even though it was a normal client-side auth failure. Now it logs a warning and returns 401, so dashboards stay clean and the client can react to the auth state correctly.
+
+## 2.3.2
+
+### Patch Changes
+
+- 0744721: Added support for changing `SECRET_KEY` in production environment.
+
+  In order to use new secret key add `NEW_SECRET_KEY` env variable.
+  App will use `NEW_SECRET_KEY` for saving new configurations, and will use existing `SECRET_KEY` as a fallback for decryption.
+
+  To update all configurations in all app instances, use rotation script in each app: `pnpm rotate-secret-key`.
+
+  For more details read `packages/shared/src/key-rotation/README.md` documentation
+
+- 762bb25: Fixed INVOICE_SENT payload, now invoice data is properly passed to the template
+- Updated dependencies [0744721]
+  - @saleor/apps-shared@1.14.5
+
+## 2.3.1
+
+### Patch Changes
+
+- 91f6d5f: Added support for OIDC between AWS and Vercel (using `@vercel/oidc-aws-credentials-provider`). Now, when `AWS_ARN` env variable is provided, it will take precedence over IAM secrets. This is more secure way to authenticate and is preferred. IAM secrets stay supported, e.g. for local DynamoDB setup.
+
+## 2.3.0
+
+### Minor Changes
+
+- dab3a19: Dropped support for TLS 1.1 and 1.2
+
+### Patch Changes
+
+- ff4174e: Added more logs when fetching data from Saleor on failure to improve debugging.
+- eda2bac: App will now log template changes for audit logs
+- Updated dependencies [ff4174e]
+  - @saleor/apps-shared@1.14.4
+
+## 2.2.1
+
+### Patch Changes
+
+- eedb36b: Re-added `JSONparse` handlebars helper
+- Updated dependencies [eedb36b]
+  - @saleor/handlebars@0.1.2
+
+## 2.2.0
+
+### Minor Changes
+
+- 6b6449d: Added support for redirecting fallback emails to a different address. When `FALLBACK_SMTP_EMAIL_REDIRECT_ENDPOINT` and `FALLBACK_SMTP_EMAIL_REDIRECT_TOKEN` env vars are configured, emails sent via the fallback SMTP path are redirected to the address returned by the endpoint instead of the original recipient. The original recipient email is prepended to the subject line (e.g. `[original@example.com] Your order is confirmed!`). A preview banner is also injected at the top of the email body stating that the email was delivered to the organization owner's address and not to the customer.
+
+## 2.1.0
+
+### Minor Changes
+
+- 622d13c: Removed `digitalContentUrl` field from payload, field is removed in 3.23
+
+### Patch Changes
+
+- 622d13c: Updated GraphQL schema to 3.23
+- Updated dependencies [622d13c]
+  - @saleor/webhook-utils@0.2.10
+  - @saleor/handlebars@0.1.1
+
+## 2.0.0
+
+### Major Changes
+
+- 057e7e6: Due to security concerns, some Handlebars helpers have been removed.
+
+  Removed groups: `fs`, `logging`, `markdown`, `match`, `object`.
+  Removed individual helpers: `embed` (from `code`), `resolve` (from `path`).
+
+  Allowed helpers:
+
+  - **array**: `after`, `arrayify`, `before`, `eachIndex`, `filter`, `first`, `forEach`, `inArray`, `isArray`, `itemAt`, `join`, `equalsLength`, `last`, `length`, `map`, `pluck`, `reverse`, `some`, `sort`, `sortBy`, `withAfter`, `withBefore`, `withFirst`, `withGroup`, `withLast`, `withSort`, `unique`
+  - **code**: `gist`, `jsfiddle`
+  - **collection**: `isEmpty`, `iterate`
+  - **comparison**: `and`, `compare`, `contains`, `default`, `eq`, `gt`, `gte`, `has`, `isFalsey`, `isTruthy`, `ifEven`, `ifNth`, `ifOdd`, `is`, `isnt`, `lt`, `lte`, `neither`, `not`, `or`, `unlessEq`, `unlessGt`, `unlessLt`, `unlessGteq`, `unlessLteq`
+  - **date**: `year`, `moment`, `date`
+  - **html**: `attr`, `css`, `js`, `sanitize`, `ul`, `ol`, `thumbnailImage`
+  - **i18n**: `i18n`
+  - **inflection**: `inflect`, `ordinalize`
+  - **math**: `abs`, `add`, `avg`, `ceil`, `divide`, `floor`, `minus`, `modulo`, `multiply`, `plus`, `random`, `remainder`, `round`, `subtract`, `sum`, `times`
+  - **misc**: `option`, `noop`, `withHash`
+  - **number**: `bytes`, `addCommas`, `phoneNumber`, `toAbbr`, `toExponential`, `toFixed`, `toFloat`, `toInt`, `toPrecision`
+  - **path**: `absolute`, `dirname`, `relative`, `basename`, `stem`, `extname`, `segments`
+  - **regex**: `toRegex`, `test`
+  - **string**: `append`, `camelcase`, `capitalize`, `capitalizeAll`, `center`, `chop`, `dashcase`, `dotcase`, `downcase`, `ellipsis`, `hyphenate`, `isString`, `lowercase`, `occurrences`, `pascalcase`, `pathcase`, `plusify`, `prepend`, `raw`, `remove`, `removeFirst`, `replace`, `replaceFirst`, `sentence`, `snakecase`, `split`, `startsWith`, `titleize`, `trim`, `trimLeft`, `trimRight`, `truncate`, `truncateWords`, `upcase`, `uppercase`
+  - **url**: `encodeURI`, `escape`, `decodeURI`, `url_encode`, `url_decode`, `urlResolve`, `urlParse`, `stripQuerystring`, `stripProtocol`
+
+## 1.7.2
+
+### Patch Changes
+
+- 2d320ef: Updated handlebars to 4.7.9
+
+## 1.7.1
+
+### Patch Changes
+
+- ec38e0b: Add extra Sentry error on JWT validation failure, for debugging
+- 3ecde04: Updated @saleor/app-sdk to v1.7.1
+- b57266c: Attach Saleor domain to Sentry events for better aggregation
+- Updated dependencies [3ecde04]
+  - @saleor/apps-logger@1.6.4
+  - @saleor/apps-otel@2.4.1
+  - @saleor/react-hook-form-macaw@0.2.17
+  - @saleor/sentry-utils@0.2.6
+  - @saleor/apps-shared@1.14.3
+  - @saleor/apps-ui@1.3.3
+
+## 1.7.0
+
+### Minor Changes
+
+- fab1f78: Webhook responses now return plain text response to Saleor, so it should be properly displayed in dashboard "webhook errors". Previously app was returning `{"message": "..."}` which is not recognized shape officially by Saleor nor Dashboard - it was rendered like text anyway.
+
+### Patch Changes
+
+- 0484f64: Add error cause for verifyJwt failures on tRPC
+- 8cc005b: Updated aws-sdk packages and dynamodb-toolbox to latest versions
+- 3cf78c1: Improved error logs (passing causes to logs)
+
+## 1.6.2
+
+### Patch Changes
+
+- a8b4d896: Add better response errors to webhook responses
+- ddfa9593: Changed how generated graphql->typescript types work. Now only types that are directly or indirectly connected to written documents (mutations, queries) are generated
+
+## 1.6.1
+
+### Patch Changes
+
+- d9bb00f5: GraphQL schema has been refreshed to use latest 3.22 (this updates schema but does not change which APIs are executed)
+- c1cbffb4: Applied "consistent imports" rule from ESLint to ensure type-only imports are marked with `import type` clause. This should improve tree shaking and reduce side effects
+- dec95470: Removed nested graphql.schema files for each app/package and added root schema. Now all packages have symlink pointing to the same file.
+- Updated dependencies [f0d36e14]
+  - @saleor/apps-shared@1.14.2
+  - @saleor/apps-logger@1.6.3
+  - @saleor/apps-otel@2.4.0
+  - @saleor/react-hook-form-macaw@0.2.16
+  - @saleor/sentry-utils@0.2.5
+  - @saleor/apps-ui@1.3.2
+
+## 1.6.0
+
+### Minor Changes
+
+- 2572c55a: Added deny-list for known invalid domains (such as `example.com`)
+  to reduce bounce rate in the default/fallback configuration.
+
+### Patch Changes
+
+- 567c38e1: Fixed missing `3000` port and over-exposed ports in the SMTP app devcontainer.
+
+## 1.5.3
+
+### Patch Changes
+
+- 71a05d9b: Refresh default email templates and overhaul template editor UX
+
+## 1.5.2
+
+### Patch Changes
+
+- f4374b68: Changed behavior of "sender email" calculation for fallback SMTP config behavior. Now it will be computed from Saleor Cloud's tenant name and the domain provided in an environment variable
+
+## 1.5.1
+
+### Patch Changes
+
+- d7ce7f67: Added client-side error capturing so client exceptions are reported to Sentry.
+
+## 1.5.0
+
+### Minor Changes
+
+- 284857dc: Added default/fallback configuration for an app.
+
+  Previously, app required full configuration to start working.
+
+  Now, app enables out-of-the-box setting. When configured (env variables), app will be able to send default messages, which should help new users to bootstrap quickly.
+
+  Existing installations will not change, unless enabled in app settings. For new installations:
+
+  1. "fallback" behavior will be enabled
+  2. webhooks will be created/enabled
+  3. app will send events (which can be disabled or overwritten by custom configuration)
+
+### Patch Changes
+
+- 07057788: Update DynamoDB/AWS & Toolbox dependencies
+
+## 1.4.8
+
+### Patch Changes
+
+- d5d7a4fe: Introduced lib t3-oss/env, which adds build-time env variables validation. Now all env variables are statically declared and exposed type-safe way
+- 6eb71d91: Removed legacy SaleorCloudAPL initialization. This APL is deprecated and will be removed in app-sdk. Apps can no longer use it. This is not marked as a major change, because this API is private to Saleor Cloud
+- 6e5f69c5: Added max DynamoDB connection and request limits (2s for connection, 5s for request), so in case of downtime, app will terminate earlier
+
+## 1.4.7
+
+### Patch Changes
+
+- 560c3de4: Added logging to DynamoDB APL for better debugging and error visibility.
+
+## 1.4.6
+
+### Patch Changes
+
+- 2a4f27ad: Fixed how AWS sdk is initialized by explicitly passing credentials. This is caused by Vercel issue, which started to implicitly override some of our credentials by injecting their own.
+
+## 1.4.5
+
+### Patch Changes
+
+- 9e17703c: Updated tTRPC to 10.45.3
+
+## 1.4.4
+
+### Patch Changes
+
+- Updated dependencies [37b91c88]
+  - @saleor/apps-otel@2.4.0
+  - @saleor/apps-logger@1.6.3
+
+## 1.4.3
+
+### Patch Changes
+
+- d0340d6b: Increased memory limits in Vercel up to 512 MB, previously 400 MB for handling Saleor webhooks.
+
+## 1.4.2
+
+### Patch Changes
+
+- 98459d79: Updated Next.js to 15.2.6
+- b1f10da0: Added logs when app fails to install due to error in APL, or due to disallowed domain and when app installs successfully
+- Updated dependencies [98459d79]
+  - @saleor/apps-logger@1.6.2
+  - @saleor/apps-otel@2.3.1
+  - @saleor/react-hook-form-macaw@0.2.16
+  - @saleor/sentry-utils@0.2.5
+  - @saleor/apps-shared@1.14.1
+  - @saleor/apps-ui@1.3.2
+
+## 1.4.1
+
+### Patch Changes
+
+- 9b32f02e: Webhook errors from email provider no longer trigger automatic retries. When SMTP server errors occur, the webhook now returns a 400 status code instead of 500, preventing Saleor from repeatedly attempting to send emails that will fail due to configuration or provider issues.
+
+## 1.4.0
+
+### Minor Changes
+
+- 16c6448f: After this change required Saleor version for running the app will be **3.20**
+
+### Patch Changes
+
+- 933441ef: Email templates will now be validated before saving them. Invalid templates cannot be saved to prevent errors when handling Saleor webhooks. Errors are now also shown when editing template with clear explanation on how to resolve them.
+- 933441ef: App will now correctly parse email templates that use handlers from handlebars-helpers (e.g. `equals`). Previously app threw an error when clicking "Render template".
+- 86747b3c: When users open app outside of Saleor Dashboard's iframe we will now display an error message with explanation. Previously we rendered app's UI, which caused frontend to make requests to the app without any required data (tokens, saleorApiUrl, etc.) which resulted in error logs.
+
+## 1.3.19
+
+### Patch Changes
+
+- Updated dependencies [6b9305d3]
+  - @saleor/apps-shared@1.14.0
+
+## 1.3.18
+
+### Patch Changes
+
+- f69a90d9: Fixed default payload for accountChangeEmailRequest and accountChangeEmailConfirm emails.
+
+## 1.3.17
+
+### Patch Changes
+
+- 2c1eb3da: Improved error handling: some expected errors will be now handled
+
+## 1.3.16
+
+### Patch Changes
+
+- 16b87f53: Update MacawUI to 1.3.0
+- a7c1cedf: Updated @saleor/app-sdk to 1.3.0
+- Updated dependencies [16b87f53]
+  - @saleor/react-hook-form-macaw@0.2.15
+  - @saleor/apps-shared@1.13.1
+  - @saleor/apps-ui@1.3.1
+
+## 1.3.15
+
+### Patch Changes
+
+- 51b4d859: Installed DynamoDB APL (controlled via env variable).
+
+## 1.3.14
+
+### Patch Changes
+
+- Updated dependencies [7a834f53]
+- Updated dependencies [b1c0139a]
+- Updated dependencies [7a834f53]
+- Updated dependencies [674b4fa0]
+  - @saleor/apps-ui@1.3.0
+
+## 1.3.13
+
+### Patch Changes
+
+- bf66a47c: Fix how we handle SMTP errors in SMTP app. After this change email sender won't be responsible for re-throwing errors. Instead use-case will catch errors and properly report them.
+
+## 1.3.12
+
+### Patch Changes
+
+- @saleor/apps-logger@1.6.1
+
+## 1.3.11
+
+### Patch Changes
+
+- Updated dependencies [00070dc3]
+  - @saleor/apps-shared@1.13.0
+
+## 1.3.10
+
+### Patch Changes
+
+- Updated dependencies [d3702072]
+- Updated dependencies [c68f1e9f]
+  - @saleor/apps-logger@1.6.0
+  - @saleor/apps-otel@2.3.0
+
+## 1.3.9
+
+### Patch Changes
+
+- e3c75265: Add new `ATTR_SERVICE_INSTANCE_ID` OTEL attribute to app instrumentation.
+- 4c5c63d5: Use TypeScript unions instead of enums in types generated from Graphql files.
+- Updated dependencies [e3c75265]
+- Updated dependencies [b4ed42c9]
+- Updated dependencies [e3c75265]
+- Updated dependencies [b4ed42c9]
+  - @saleor/apps-otel@2.2.0
+  - @saleor/apps-shared@1.12.3
+  - @saleor/apps-logger@1.5.5
+
+## 1.3.8
+
+### Patch Changes
+
+- 94c52129: Update to Next.js 15
+  - @saleor/apps-logger@1.5.4
+  - @saleor/apps-otel@2.1.5
+  - @saleor/react-hook-form-macaw@0.2.14
+  - @saleor/sentry-utils@0.2.4
+  - @saleor/apps-shared@1.12.2
+  - @saleor/apps-ui@1.2.12
+
+## 1.3.7
+
+### Patch Changes
+
+- Updated dependencies [1aff5e42]
+  - @saleor/apps-logger@1.5.4
+  - @saleor/apps-otel@2.1.5
+
+## 1.3.6
+
+### Patch Changes
+
+- a76465fb: Update `@saleor/app-sdk` to `v1.0.0`
+- Updated dependencies [a76465fb]
+  - @saleor/apps-logger@1.5.3
+  - @saleor/apps-otel@2.1.4
+
+## 1.3.5
+
+### Patch Changes
+
+- 339518c2: Fixed how we initialize Sentry SDK for API routes when runtime is Node.js. After this change we will use `NodeClient` directly from Sentry SDK to avoid interfering with our OTEL setup. We also removed not needed Sentry integration for edge runtime
+
+## 1.3.4
+
+### Patch Changes
+
+- c8e61ac2: Updated Sentry to 9.6.1
+- da9899d5: Cleanup deps, peerDeps & devDependencies for package
+- Updated dependencies [da9899d5]
+  - @saleor/react-hook-form-macaw@0.2.14
+  - @saleor/apps-logger@1.5.2
+  - @saleor/apps-shared@1.12.2
+  - @saleor/apps-otel@2.1.3
+  - @saleor/apps-ui@1.2.12
+  - @saleor/sentry-utils@0.2.4
+
+## 1.3.3
+
+### Patch Changes
+
+- Updated dependencies [6e94e99c]
+  - @saleor/apps-otel@2.1.2
+
+## 1.3.2
+
+### Patch Changes
+
+- 996d9be1: Use [PNPM catalogs](https://pnpm.io/catalogs) feature to ensure that dependencies are in sync between different packages in monorepo.
+- aa1c7597: Added new attributes to OTEL setup - it will allow better GitHub integration with our OTEL provider
+- Updated dependencies [996d9be1]
+- Updated dependencies [aa1c7597]
+  - @saleor/react-hook-form-macaw@0.2.13
+  - @saleor/apps-logger@1.5.1
+  - @saleor/apps-shared@1.12.1
+  - @saleor/apps-otel@2.1.1
+  - @saleor/apps-ui@1.2.11
+  - @saleor/sentry-utils@0.2.4
+
+## 1.3.1
+
+### Patch Changes
+
+- Updated dependencies [8154e9e9]
+  - @saleor/apps-otel@2.1.0
+
+## 1.3.0
+
+### Minor Changes
+
+- 3c4358ae: Setup OTEL via instrumentation hook. After this change app will use [official way](https://nextjs.org/docs/14/app/building-your-application/optimizing/open-telemetry) of setting up OTEL. There are no visible changes to the end user.
+
+### Patch Changes
+
+- defa0b60: Rename `wrapWithSpanAttributes` to `withSpanAttributes`. No changes to the end user.
+- e3fe0f70: Use `@vercel/otel` package to setup OTEL. After this change spans will be automatically flushed by Vercel.
+- Updated dependencies [3c4358ae]
+- Updated dependencies [9cfb8ace]
+- Updated dependencies [e3fe0f70]
+- Updated dependencies [23a31eb4]
+- Updated dependencies [defa0b60]
+- Updated dependencies [defa0b60]
+  - @saleor/apps-otel@2.0.0
+  - @saleor/apps-logger@1.5.0
+  - @saleor/apps-shared@1.12.0
+
+## 1.2.24
+
+### Patch Changes
+
+- b3e136b0: Add `saleor-app` prefix to `package.json` so names of npm app projects are in sync with names of Vercel projects. No visible changes to the user.
+
+## 1.2.23
+
+### Patch Changes
+
+- 2f06b1e9: Bumping app-sdk to v0.52.0 - adding native APL support for vercel-kv and redis
+- a8f63fc4: Modified vercel.json to allow multiple regions. Now Vercel will replicate function in "dub1" and "iad1"
+
+## 1.2.22
+
+### Patch Changes
+
+- 0f0bff21: Move `ThemeSynchronizer` utility to shared packages.
+
+## 1.2.21
+
+### Patch Changes
+
+- 0db174a8: Removed regex escape for `ALLOWED_DOMAINS_URL` env variable from register handler. It isn't user input and escaping regex was causing problem with apps installation.
+
+## 1.2.20
+
+### Patch Changes
+
+- 9bbf9ee5: Increased Vercel log limit to new value - 256KB. See [announcement](https://vercel.com/changelog/updated-logging-limits-for-vercel-functions) blog post from Vercel for more details.
+- 9bbf9ee5: Added new `LoggerVercelTransport` support. It will help us send logs to our infrastructure without need of OTEL unstable logs API.
+- 9bbf9ee5: Escape ALLOWED_DOMAIN_PATTERN regex. It ensures that regex constructed from env variable is sanitized and can't be used to Denial of Service attack.
+- 9bbf9ee5: Fixed autofixable linting issues. No functional changes.
+- Updated dependencies [9bbf9ee5]
+- Updated dependencies [9bbf9ee5]
+  - @saleor/apps-logger@1.4.3
+  - @saleor/react-hook-form-macaw@0.2.12
+  - @saleor/apps-shared@1.11.4
+  - @saleor/apps-otel@1.3.5
+  - @saleor/apps-ui@1.2.10
+
+## 1.2.19
+
+### Patch Changes
+
+- 83ad6531: Updated Node.js to 22.11
+- Updated dependencies [1e70b997]
+- Updated dependencies [83ad6531]
+  - @saleor/apps-logger@1.4.2
+  - @saleor/apps-otel@1.3.4
+  - @saleor/react-hook-form-macaw@0.2.11
+  - @saleor/sentry-utils@0.2.4
+  - @saleor/apps-shared@1.11.3
+  - @saleor/apps-ui@1.2.9
+
+## 1.2.18
+
+### Patch Changes
+
+- 69992d56: Update modern-errors-serialize library so it supports excluding error property from serialization
+- Updated dependencies [69992d56]
+  - @saleor/apps-logger@1.4.1
+
+## 1.2.17
+
+### Patch Changes
+
+- Updated dependencies [92a2a5fd]
+  - @saleor/apps-logger@1.4.0
+
+## 1.2.16
+
+### Patch Changes
+
+- d088ef37: Use new way of creating logger from `@saleor/apps-logger`
+- Updated dependencies [2f37f075]
+- Updated dependencies [d088ef37]
+- Updated dependencies [6d528dc6]
+  - @saleor/apps-logger@1.3.0
+
+## 1.2.15
+
+### Patch Changes
+
+- Updated dependencies [6be0103c]
+  - @saleor/apps-logger@1.2.10
+
+## 1.2.14
+
+### Patch Changes
+
+- 0ef7adde: You can now see the error log when sending email has timeout
+
+## 1.2.13
+
+### Patch Changes
+
+- 8b66ff67: Processing webhook now logs the size of email and subject template
+
+## 1.2.12
+
+### Patch Changes
+
+- Updated dependencies [f1025fae]
+  - @saleor/apps-otel@1.3.3
+
+## 1.2.11
+
+### Patch Changes
+
+- Updated dependencies [93969b2a]
+  - @saleor/apps-otel@1.3.2
+
+## 1.2.10
+
+### Patch Changes
+
+- fe5d5d5e: Updated @saleor/app-sdk to 0.50.3. This version removes the limitation of body size for the webhook payloads.
+
+## 1.2.9
+
+### Patch Changes
+
+- 45a47156: Updated @saleor/app-sdk to 0.50.2. No functional changes are introduced
+
+## 1.2.8
+
+### Patch Changes
+
+- 6fed4b19: Migrate to new newest MacawUI version. Functionally nothing has changed. UI may look a bit different but it will be on par with Dashboard UI.
+- Updated dependencies [6fed4b19]
+  - @saleor/react-hook-form-macaw@0.2.10
+  - @saleor/apps-shared@1.11.2
+  - @saleor/apps-ui@1.2.8
+
+## 1.2.7
+
+### Patch Changes
+
+- 9650998a: Now "mjml" is being treated as external and properly handled by "bundlePagesExternals" flag.
+
+## 1.2.6
+
+### Patch Changes
+
+- b708a107: The "require" call was replaced by regular "import" which causes random timeouts on webhook processing in mjml usage.
+
+## 1.2.5
+
+### Patch Changes
+
+- b487edb2: Now, the flag "bundlePagesExternals" was added, which means cold-starts should be decreased according to Vercel documentation.
+
+## 1.2.4
+
+### Patch Changes
+
+- e93143c9: Error during rendering template is caught and logged
+- 695f8f5c: Now, fetching settings from Saleor has defined timeout, that means sending email will fail when that timeout will be exceeded.
+
+## 1.2.3
+
+### Patch Changes
+
+- 5763f5ea: You can now see the event in 'notify_user' OTEL logs.
+
+## 1.2.2
+
+### Patch Changes
+
+- ea25bb83: Updated dependencies responsible for error handling.
+- e38c1417: You can now find how to run and test each app in README file
+
+## 1.2.1
+
+### Patch Changes
+
+- 17077505: Updated TypeScript version to 4.5.4.
+- Updated dependencies [17077505]
+  - @saleor/react-hook-form-macaw@0.2.9
+  - @saleor/sentry-utils@0.2.3
+  - @saleor/apps-logger@1.2.9
+  - @saleor/apps-shared@1.11.1
+  - @saleor/apps-otel@1.3.1
+  - @saleor/apps-ui@1.2.7
+
+## 1.2.0
+
+### Minor Changes
+
+- dd76ea26: Added support for [Handlebars Helpers](https://github.com/helpers/handlebars-helpers) which adds more flexibility to the template syntax.
+
+### Patch Changes
+
+- dd76ea26: Added displaying of Handlebars error in template editor. Now if invalid syntax is entered, raw error will be displayed above the form
+
+## 1.1.5
+
+### Patch Changes
+
+- 5fbf0437: Fixed error with webhooks timing out. Now root UseCase operation is wrapped with try/catch block, so if unhandled error occurs, response will be returned. Previously response was hanging until lambda was terminated.
+- f199cf13: Changed how MJML compiler is imported in the app. Not it uses legacy require() instead of import. Previous syntax broke the app
+
+## 1.1.4
+
+### Patch Changes
+
+- Updated dependencies [6f2d6abb]
+  - @saleor/apps-otel@1.3.0
+
+## 1.1.3
+
+### Patch Changes
+
+- fbdbaa28: Remove custom Next.js + Sentry error. It was causing non existing paths to be reported as 500 instead of 404. We catch Sentry errors in implicit anyway in api routes.
+- Updated dependencies [fbdbaa28]
+  - @saleor/sentry-utils@0.2.2
+
+## 1.1.2
+
+### Patch Changes
+
+- 2f59041c: Reverted shared Sentry configuration (init() part). It was not working properly - source maps were not properly assigned. Now configuration is not shared, but repeated in every app separately
+- Updated dependencies [2f59041c]
+  - @saleor/sentry-utils@0.2.1
+
+## 1.1.1
+
+### Patch Changes
+
+- 0c4ba39f: Update next.js config after Sentry rollback.
+- Updated dependencies [0c4ba39f]
+- Updated dependencies [0c4ba39f]
+- Updated dependencies [5c851a6c]
+  - @saleor/apps-otel@1.2.2
+  - @saleor/apps-logger@1.2.8
+
+## 1.1.0
+
+### Minor Changes
+
+- c4dcb863: Remove Pino logger library. It was already deprecated but for non migrated apps it was causing build errors. Right now we have one logger - @saleor/app-logger pkg.
+- 1a9912f5: Setup Sentry inside Next.js instrumentation file. It ensures that Sentry works properly for serverless environment.
+
+### Patch Changes
+
+- f4885a48: Fixed template for ACCOUNT_PASSWORD_RESET. Now template shows properly reset_url variable instead confirm_url
+- 37ecb246: Update pnpm to 9.2.0 version. It means that we also dropped support for Node.js less than 16.
+- cc047b1d: Downgraded Sentry package to v7. Previous upgrade to 8.x cause Sentry to conflict with Open Telemetry setup and Sentry was not working
+- b42b4a5b: Fixed logging errors. Now error payload should be visible in logger.error() invocations
+- b42b4a5b: Changed Vercel settings. Now function will have ~25s to execute, instead of default 15. Also memory was adjusted to 400MB
+- b42b4a5b: Fixed missing LoggerContext in TRPC endpoint. Now context for logs is passed properly in configuration paths
+- Updated dependencies [37ecb246]
+- Updated dependencies [c4dcb863]
+- Updated dependencies [1a9912f5]
+  - @saleor/apps-logger@1.2.7
+  - @saleor/apps-otel@1.2.1
+  - @saleor/react-hook-form-macaw@0.2.8
+  - @saleor/sentry-utils@0.2.0
+  - @saleor/apps-shared@1.11.0
+  - @saleor/apps-ui@1.2.6
+
+## 1.0.0
+
+### Major Changes
+
+- 02bb4277: SMTP app has been released as stable 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [e7b909ed]
+  - @saleor/sentry-utils@0.1.0
+
+## 0.0.3
+
+### Patch Changes
+
+- 64d88b24: Update packages to ESM. See node [docs](https://nodejs.org/api/esm.html) for more info.
+- 5cbd3b63: Updated @saleor/app-sdk package to 0.50.1
+- Updated dependencies [64d88b24]
+- Updated dependencies [5cbd3b63]
+- Updated dependencies [e1ea31be]
+  - @saleor/react-hook-form-macaw@0.2.7
+  - @saleor/apps-logger@1.2.6
+  - @saleor/apps-shared@1.10.3
+  - @saleor/apps-otel@1.2.0
+  - @saleor/apps-ui@1.2.5
+
+## 0.0.2
+
+### Patch Changes
+
+- 4ffef6be: Update `@sentry/nextjs` to 8.0.0 version. It should help us with attaching additional data to Sentry errors.
+- 2604ce1e: Updated Next.js to 14.2.3
+- 705a6812: Send additional properties from captured errors into Sentry. This should help us with debugging issues.
+- Updated dependencies [4ffef6be]
+- Updated dependencies [2604ce1e]
+  - @saleor/apps-logger@1.2.5
+  - @saleor/apps-shared@1.10.2
+  - @saleor/apps-ui@1.2.4
+  - @saleor/apps-otel@1.1.0
+  - @saleor/react-hook-form-macaw@0.2.6
+
+## 0.0.1
+
+### Patch Changes
+
+- Updated dependencies [eec25524]
+  - @saleor/apps-logger@1.2.4

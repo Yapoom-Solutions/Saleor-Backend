@@ -1,0 +1,54 @@
+import { createManifestHandler } from "@saleor/app-sdk/handlers/next";
+import { type AppManifest } from "@saleor/app-sdk/types";
+import { wrapWithLoggerContext } from "@saleor/apps-logger/node";
+import { withSpanAttributes } from "@saleor/apps-otel/src/with-span-attributes";
+
+import pkg from "../../../package.json";
+import { appDeletedWebhook } from "../../app/api/webhooks/app-deleted/webhook-definition";
+import { env } from "../../env";
+import { loggerContext } from "../../logger-context";
+import { customerCreatedWebhook } from "./webhooks/customer-created";
+import { fulfillmentCreatedWebhook } from "./webhooks/fulfillment-created";
+import { orderCreatedWebhook } from "./webhooks/order-created";
+import { orderFullyPaidWebhook } from "./webhooks/order-fully-paid";
+
+const handler = wrapWithLoggerContext(
+  withSpanAttributes(
+    createManifestHandler({
+      async manifestFactory({ appBaseUrl }): Promise<AppManifest> {
+        const iframeBaseUrl = env.APP_IFRAME_BASE_URL ?? appBaseUrl;
+        const apiBaseURL = env.APP_API_BASE_URL ?? appBaseUrl;
+
+        return {
+          about: "Klaviyo integration allows sending Klaviyo notifications on Saleor events.",
+          appUrl: iframeBaseUrl,
+          author: "Saleor Commerce",
+          brand: {
+            logo: {
+              default: `${apiBaseURL}/logo.png`,
+            },
+          },
+          requiredSaleorVersion: ">=3.21 <4",
+          dataPrivacyUrl: "https://saleor.io/legal/privacy/",
+          homepageUrl: "https://github.com/saleor/apps",
+          id: "saleor.app.klaviyo",
+          name: "Klaviyo",
+          permissions: ["MANAGE_USERS", "MANAGE_ORDERS"],
+          supportUrl: "https://github.com/saleor/apps/discussions",
+          tokenTargetUrl: `${apiBaseURL}/api/register`,
+          version: pkg.version,
+          webhooks: [
+            customerCreatedWebhook.getWebhookManifest(appBaseUrl),
+            fulfillmentCreatedWebhook.getWebhookManifest(appBaseUrl),
+            orderCreatedWebhook.getWebhookManifest(appBaseUrl),
+            orderFullyPaidWebhook.getWebhookManifest(appBaseUrl),
+            appDeletedWebhook.getWebhookManifest(appBaseUrl),
+          ],
+        };
+      },
+    }),
+  ),
+  loggerContext,
+);
+
+export default handler;

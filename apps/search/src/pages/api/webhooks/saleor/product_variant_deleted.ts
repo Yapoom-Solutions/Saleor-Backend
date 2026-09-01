@@ -1,0 +1,87 @@
+import { type NextJsWebhookHandler } from "@saleor/app-sdk/handlers/next";
+import { wrapWithLoggerContext } from "@saleor/apps-logger/node";
+import { withSpanAttributes } from "@saleor/apps-otel/src/with-span-attributes";
+
+import { AlgoliaErrorParser } from "../../../../lib/algolia/algolia-error-parser";
+import { createLogger } from "../../../../lib/logger";
+import { loggerContext } from "../../../../lib/logger-context";
+import { type ProductVariantDeleted } from "../../../../lib/webhook-event-types";
+import { createSearchProblemReporter } from "../../../../modules/app-problems";
+import { webhookProductVariantDeleted } from "../../../../webhooks/definitions/product-variant-deleted";
+import { handleAlgoliaWebhookError } from "../../../../webhooks/handle-algolia-webhook-error";
+import { handleInvalidAppIdError } from "../../../../webhooks/handle-invalid-app-id-error";
+import { createWebhookContext } from "../../../../webhooks/webhook-context";
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+const logger = createLogger("webhookProductVariantDeletedWebhookHandler");
+
+export const handler: NextJsWebhookHandler<ProductVariantDeleted> = async (req, res, context) => {
+  const { event, authData } = context;
+
+  logger.info(`New event received: ${event} (${context.payload?.__typename})`, {
+    saleorApiUrl: authData.saleorApiUrl,
+  });
+
+  const { productVariant } = context.payload;
+
+  if (!productVariant) {
+    logger.error("Webhook did not received expected product data in the payload.");
+
+    return res.status(200).end();
+  }
+
+  try {
+    const { algoliaClient, apiClient } = await createWebhookContext({ authData });
+
+    try {
+      await algoliaClient.deleteProductVariant(productVariant);
+
+      res.status(200).end();
+
+      return;
+    } catch (e) {
+      if (AlgoliaErrorParser.isAuthError(e)) {
+        const problemReporter = createSearchProblemReporter(authData);
+
+        await problemReporter.reportAuthErrorAndDeactivate(authData.appId);
+
+        return res.status(401).send("Algolia rejected due to invalid credentials");
+      }
+
+      const invalidAppIdResponse = await handleInvalidAppIdError({
+        error: e,
+        authData,
+        res,
+        logger,
+      });
+
+      if (invalidAppIdResponse) {
+        return;
+      }
+
+      return handleAlgoliaWebhookError({
+        error: e,
+        logger,
+        message:
+          "Failed to execute product_variant_deleted webhook (algoliaClient.deleteProductVariant)",
+        res,
+      });
+    }
+  } catch (e) {
+    logger.error("Failed to execute product_variant_deleted webhook (createWebhookContext)", {
+      error: e,
+    });
+
+    return res.status(400).send((e as Error).message);
+  }
+};
+
+export default wrapWithLoggerContext(
+  withSpanAttributes(webhookProductVariantDeleted.createHandler(handler)),
+  loggerContext,
+);

@@ -1,0 +1,32 @@
+{
+  "name": "@saleor/apps-ui",
+  "version": "1.4.0",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "check-types": "tsc",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix ."
+  },
+  "devDependencies": {
+    "@saleor/app-sdk": "link:../../node_modules/@saleor/app-sdk",
+    "@saleor/eslint-config-apps": "workspace:*",
+    "@saleor/macaw-ui": "catalog:",
+    "@saleor/typescript-config-apps": "workspace:*",
+    "@types/react": "18.2.5",
+    "@types/react-dom": "18.2.5",
+    "eslint": "catalog:",
+    "lucide-react": "catalog:",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "5.8.2"
+  },
+  "peerDependencies": {
+    "@saleor/macaw-ui": "catalog:",
+    "lucide-react": "catalog:",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  }
+}

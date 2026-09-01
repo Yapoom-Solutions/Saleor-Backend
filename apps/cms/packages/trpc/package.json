@@ -1,0 +1,39 @@
+{
+  "name": "@saleor/apps-trpc",
+  "version": "4.0.5",
+  "type": "module",
+  "exports": {
+    "./context-app-router": "./src/context-app-router.ts",
+    "./context-pages-router": "./src/context-pages-router.ts",
+    "./http-batch-link": "./src/http-batch-link.ts"
+  },
+  "scripts": {
+    "check-types": "tsc",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix ."
+  },
+  "devDependencies": {
+    "@saleor/app-sdk": "link:../../node_modules/@saleor/app-sdk",
+    "@saleor/apps-shared": "workspace:*",
+    "@saleor/eslint-config-apps": "workspace:*",
+    "@saleor/typescript-config-apps": "workspace:*",
+    "@trpc/client": "catalog:",
+    "@trpc/next": "catalog:",
+    "@trpc/react-query": "catalog:",
+    "@trpc/server": "catalog:",
+    "@types/node": "catalog:",
+    "next": "catalog:",
+    "typescript": "5.8.2"
+  },
+  "peerDependencies": {
+    "@saleor/app-sdk": "catalog:",
+    "@trpc/client": "catalog:",
+    "@trpc/next": "catalog:",
+    "@trpc/react-query": "catalog:",
+    "@trpc/server": "catalog:",
+    "eslint": "catalog:",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  }
+}

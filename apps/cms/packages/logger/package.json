@@ -1,0 +1,47 @@
+{
+  "name": "@saleor/apps-logger",
+  "version": "1.6.4",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./index.ts"
+    },
+    "./node": {
+      "default": "./node.ts"
+    }
+  },
+  "main": "index.ts",
+  "scripts": {
+    "check-types": "tsc",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "test": "vitest",
+    "test:ci": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@saleor/apps-otel": "workspace:*",
+    "@saleor/errors": "workspace:*",
+    "modern-errors": "catalog:",
+    "modern-errors-serialize": "catalog:",
+    "tslog": "4.9.2"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "catalog:",
+    "@saleor/app-sdk": "link:../../node_modules/@saleor/app-sdk",
+    "@saleor/eslint-config-apps": "workspace:*",
+    "@saleor/typescript-config-apps": "workspace:*",
+    "@sentry/nextjs": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "next": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "catalog:",
+    "@saleor/app-sdk": "catalog:",
+    "@sentry/nextjs": "catalog:",
+    "next": "catalog:"
+  }
+}

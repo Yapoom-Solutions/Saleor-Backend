@@ -1,0 +1,25 @@
+import { type WebhookProductVariantFragment } from "../../../generated/graphql";
+import { type ProvidersConfig } from "../configuration";
+
+export class FieldsMapper {
+  static mapProductVariantToConfigurationFields({
+    configMapping,
+    variant,
+  }: {
+    variant: WebhookProductVariantFragment;
+    configMapping: ProvidersConfig.AnyFullShape["productVariantFieldsMapping"];
+  }) {
+    const { channels, variantName, productId, productName, productSlug, variantId, sku } =
+      configMapping;
+
+    return {
+      [variantName]: variant.name,
+      [productId]: variant.product.id,
+      [productName]: variant.product.name,
+      [productSlug]: variant.product.slug,
+      [variantId]: variant.id,
+      [channels]: variant.channelListings,
+      [sku]: variant.sku,
+    };
+  }
+}

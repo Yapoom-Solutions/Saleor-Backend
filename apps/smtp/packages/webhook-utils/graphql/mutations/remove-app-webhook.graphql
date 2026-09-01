@@ -1,0 +1,11 @@
+mutation RemoveAppWebhook($id: ID!) {
+  webhookDelete(id: $id) {
+    webhook {
+      id
+    }
+    errors {
+      field
+      message
+    }
+  }
+}

@@ -95,6 +95,66 @@ services:
       - SECRET_KEY=${PRODUCTS_FEED_SECRET_KEY:-default_products_feed_secret_key_change_me}
       - REQUEST_SECRET=${PRODUCTS_FEED_REQUEST_SECRET:-default_products_feed_request_secret_change_me}
 
+  smtp-app:
+    build:
+      context: ./apps/smtp
+      dockerfile: Dockerfile
+    ports:
+      - 8084:3000
+    restart: unless-stopped
+    networks:
+      - saleor-backend-tier
+    environment:
+      - PORT=3000
+      - APP_URL=https://smtp-app.udayamarketing.in
+      - SECRET_KEY=${SMTP_SECRET_KEY:-default_smtp_secret_key_change_me}
+      - REQUEST_SECRET=${SMTP_REQUEST_SECRET:-default_smtp_request_secret_change_me}
+
+  search-app:
+    build:
+      context: ./apps/search
+      dockerfile: Dockerfile
+    ports:
+      - 8085:3000
+    restart: unless-stopped
+    networks:
+      - saleor-backend-tier
+    environment:
+      - PORT=3000
+      - APP_URL=https://search-app.udayamarketing.in
+      - SECRET_KEY=${SEARCH_SECRET_KEY:-default_search_secret_key_change_me}
+      - REQUEST_SECRET=${SEARCH_REQUEST_SECRET:-default_search_request_secret_change_me}
+
+  cms-app:
+    build:
+      context: ./apps/cms
+      dockerfile: Dockerfile
+    ports:
+      - 8086:3000
+    restart: unless-stopped
+    networks:
+      - saleor-backend-tier
+    environment:
+      - PORT=3000
+      - APP_URL=https://cms-app.udayamarketing.in
+      - SECRET_KEY=${CMS_SECRET_KEY:-default_cms_secret_key_change_me}
+      - REQUEST_SECRET=${CMS_REQUEST_SECRET:-default_cms_request_secret_change_me}
+
+  klaviyo-app:
+    build:
+      context: ./apps/klaviyo
+      dockerfile: Dockerfile
+    ports:
+      - 8087:3000
+    restart: unless-stopped
+    networks:
+      - saleor-backend-tier
+    environment:
+      - PORT=3000
+      - APP_URL=https://klaviyo-app.udayamarketing.in
+      - SECRET_KEY=${KLAVIYO_SECRET_KEY:-default_klaviyo_secret_key_change_me}
+      - REQUEST_SECRET=${KLAVIYO_REQUEST_SECRET:-default_klaviyo_request_secret_change_me}
+
   db:
     image: library/postgres:15-alpine
     ports:

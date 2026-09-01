@@ -1,0 +1,156 @@
+# @saleor/webhook-utils
+
+## 0.3.0
+
+### Minor Changes
+
+- 6683590: Added app-deleted-handler, shared webhook abstraction, that automatically runs apl.delete(). It additionally exposes hooks to run extra clean up, like DynamoDB pruning (this is per-app logic).
+
+## 0.2.10
+
+### Patch Changes
+
+- 622d13c: Updated GraphQL schema to 3.23
+
+## 0.2.9
+
+### Patch Changes
+
+- 3ecde04: Updated @saleor/app-sdk to v1.7.1
+
+## 0.2.8
+
+### Patch Changes
+
+- ddfa9593: Changed how generated graphql->typescript types work. Now only types that are directly or indirectly connected to written documents (mutations, queries) are generated
+
+## 0.2.7
+
+### Patch Changes
+
+- f0d36e14: Updated `semver` package version
+- dec95470: Removed nested graphql.schema files for each app/package and added root schema. Now all packages have symlink pointing to the same file.
+
+## 0.2.6
+
+### Patch Changes
+
+- 98459d79: Updated Next.js to 15.2.6
+
+## 0.2.5
+
+### Patch Changes
+
+- da9899d5: Cleanup deps, peerDeps & devDependencies for package
+
+## 0.2.4
+
+### Patch Changes
+
+- 996d9be1: Use [PNPM catalogs](https://pnpm.io/catalogs) feature to ensure that dependencies are in sync between different packages in monorepo.
+
+## 0.2.3
+
+### Patch Changes
+
+- 9bbf9ee5: Fixed autofixable linting issues. No functional changes.
+
+## 0.2.2
+
+### Patch Changes
+
+- 83ad6531: Updated Node.js to 22.11
+
+## 0.2.1
+
+### Patch Changes
+
+- 69992d56: Update modern-errors-serialize library so it supports excluding error property from serialization
+
+## 0.2.0
+
+### Minor Changes
+
+- 2f37f075: Improved error handling of `WebhookMigrationRunner`. Now this class will throw unknown errors that later can be logged to Sentry in respective app.
+
+## 0.1.4
+
+### Patch Changes
+
+- 17077505: Updated TypeScript version to 4.5.4.
+
+## 0.1.3
+
+### Patch Changes
+
+- 37ecb246: Update pnpm to 9.2.0 version. It means that we also dropped support for Node.js less than 16.
+
+## 0.1.2
+
+### Patch Changes
+
+- 64d88b24: Update packages to ESM. See node [docs](https://nodejs.org/api/esm.html) for more info.
+- 5cbd3b63: Updated @saleor/app-sdk package to 0.50.1
+
+## 0.1.1
+
+### Patch Changes
+
+- 2604ce1e: Updated Next.js to 14.2.3
+
+## 0.1.0
+
+### Minor Changes
+
+- 827be8c8: Extracted webhook migration logic to new class: WebhookMigrationRunner. It should be used by apps to run webhook migrations.
+
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies [f22f2b8a]
+  - @saleor/apps-shared@1.10.1
+
+## 0.0.6
+
+### Patch Changes
+
+- Updated dependencies [b29318a2]
+  - @saleor/apps-shared@1.10.0
+
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies [29d10d4a]
+  - @saleor/apps-shared@1.9.4
+
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [67afe8e4]
+  - @saleor/apps-shared@1.9.3
+
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [99f7066]
+  - @saleor/apps-shared@1.9.2
+
+## 0.0.2
+
+### Patch Changes
+
+- fdabc51: Mapped app-sdk package to root library
+- Updated dependencies [fdabc51]
+  - @saleor/apps-shared@1.9.1
+
+## 0.0.1
+
+### Patch Changes
+
+- 5dee65a: Updated dependencies:
+  - @graphql-codegen/cli@5.0.0
+- 7e0755e: Introduced a new shared package with helpers used for webhook management.

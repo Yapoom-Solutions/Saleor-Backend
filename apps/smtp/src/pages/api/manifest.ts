@@ -1,0 +1,46 @@
+import { createManifestHandler } from "@saleor/app-sdk/handlers/next";
+import { type AppManifest } from "@saleor/app-sdk/types";
+import { withSpanAttributes } from "@saleor/apps-otel/src/with-span-attributes";
+
+import packageJson from "../../../package.json";
+import { appDeletedWebhook } from "../../app/api/webhooks/app-deleted/webhook-definition";
+import { env } from "../../env";
+
+export default withSpanAttributes(
+  createManifestHandler({
+    async manifestFactory({ appBaseUrl }) {
+      const iframeBaseUrl = env.APP_IFRAME_BASE_URL ?? appBaseUrl;
+      const apiBaseURL = env.APP_API_BASE_URL ?? appBaseUrl;
+
+      const manifest: AppManifest = {
+        about:
+          "SMTP App is a Saleor integration that allows you to send emails using your own SMTP server.",
+        appUrl: iframeBaseUrl,
+        author: "Saleor Commerce",
+        brand: {
+          logo: {
+            default: `${apiBaseURL}/logo.png`,
+          },
+        },
+        dataPrivacyUrl: "https://saleor.io/legal/privacy/",
+        extensions: [
+          /**
+           * Optionally, extend Dashboard with custom UIs
+           * https://docs.saleor.io/developer/extending/apps/extending-dashboard-with-apps
+           */
+        ],
+        homepageUrl: "https://github.com/saleor/apps",
+        id: env.MANIFEST_APP_ID,
+        name: "SMTP",
+        permissions: ["MANAGE_ORDERS", "MANAGE_USERS", "MANAGE_GIFT_CARD"],
+        requiredSaleorVersion: ">=3.22 <4",
+        supportUrl: "https://github.com/saleor/apps/discussions",
+        tokenTargetUrl: `${apiBaseURL}/api/register`,
+        version: packageJson.version,
+        webhooks: [appDeletedWebhook.getWebhookManifest(apiBaseURL)],
+      };
+
+      return manifest;
+    },
+  }),
+);

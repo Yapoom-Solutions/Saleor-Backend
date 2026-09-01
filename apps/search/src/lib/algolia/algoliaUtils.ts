@@ -1,0 +1,323 @@
+import { EditorJsPlaintextRenderer } from "@saleor/apps-shared/editor-js-plaintext-renderer";
+
+import {
+  type ProductAttributesDataFragment,
+  type ProductVariantWebhookPayloadFragment,
+} from "../../../generated/graphql";
+import { type AlgoliaRootFields, AlgoliaRootFieldsKeys } from "../algolia-fields";
+import { isNotNil } from "../isNotNil";
+import { createLogger } from "../logger";
+import { safeParseJson } from "../safe-parse-json";
+import { metadataToAlgoliaAttribute } from "./metadata-to-algolia-attribute";
+
+const logger = createLogger("algoliaUtils");
+
+type PartialChannelListing = {
+  channel: {
+    slug: string;
+    currencyCode: string;
+  };
+};
+
+export function channelListingToAlgoliaIndexId(
+  channelListing: PartialChannelListing,
+  indexNamePrefix: string | undefined,
+) {
+  /**
+   * Index name should not start with . (dot)
+   */
+  const normalizedPrefix = indexNamePrefix === "" ? undefined : indexNamePrefix;
+
+  const nameSegments = [
+    normalizedPrefix,
+    channelListing.channel.slug,
+    channelListing.channel.currencyCode,
+    "products",
+  ];
+
+  return nameSegments.filter(isNotNil).join(".");
+}
+
+/**
+ * Produces category tree in the format expected by hierarchical Algolia widgets, for example:
+ *
+ * {
+ *  "lvl0": "Root Category",
+ *  "lvl1": "Root Category > Subcategory"
+ *  "lvl2": "Root Category > Subcategory > Sub-subcategory"
+ * }
+ * https://www.algolia.com/doc/guides/managing-results/refine-results/faceting/#hierarchical-facets
+ */
+export function categoryHierarchicalFacets({ product }: ProductVariantWebhookPayloadFragment) {
+  const categoryParents = [
+    product.category?.parent?.parent?.parent?.parent?.name,
+    product.category?.parent?.parent?.parent?.name,
+    product.category?.parent?.parent?.name,
+    product.category?.parent?.name,
+    product.category?.name,
+  ].filter((category) => category?.length);
+
+  const categoryLvlMapping: Record<string, string> = {};
+
+  for (let i = 0; i < categoryParents.length; i += 1) {
+    categoryLvlMapping[`lvl${i}`] = categoryParents.slice(0, i + 1).join(" > ");
+  }
+
+  return categoryLvlMapping;
+}
+
+export type AlgoliaObject = ReturnType<typeof productAndVariantToAlgolia>;
+
+const isAttributeValueBooleanType = (
+  attributeValue: ProductAttributesDataFragment["values"],
+): attributeValue is [{ boolean: boolean; inputType: "BOOLEAN" }] => {
+  return (
+    /**
+     * Boolean type can be only a single value. List API exists due to multi-value fields like multiselect
+     */
+    attributeValue.length === 1 &&
+    attributeValue[0].inputType === "BOOLEAN" &&
+    typeof attributeValue[0].boolean === "boolean"
+  );
+};
+
+const isAttributeValueNumericType = (
+  attributeValue: ProductAttributesDataFragment["values"],
+): attributeValue is [{ name: string; inputType: "NUMERIC" }] => {
+  /**
+   * NUMERIC attributes are single-value by design in Saleor.
+   */
+  return (
+    attributeValue.length === 1 &&
+    attributeValue[0].inputType === "NUMERIC" &&
+    typeof attributeValue[0].name === "string"
+  );
+};
+
+/**
+ *  Returns object with a key being attribute name and value of all attribute values
+ *  separated by comma. If no value is selected, an empty string will be used instead.
+ */
+export const mapSelectedAttributesToRecord = (
+  attr: ProductAttributesDataFragment,
+  context?: { productId: string; variantId: string },
+) => {
+  if (!attr.attribute.name?.length) {
+    return undefined;
+  }
+
+  /**
+   * TODO: How/When name can be empty?
+   */
+  const filteredValues = attr.values.filter((v) => !!v.name?.length);
+
+  let value: string | boolean | number | string[];
+
+  /**
+   * Strategy for boolean type only
+   * REF SHOPX-332
+   * TODO: Other input types should be handled and properly mapped
+   */
+  if (isAttributeValueBooleanType(filteredValues)) {
+    value = filteredValues[0].boolean;
+  } else if (isAttributeValueNumericType(filteredValues)) {
+    const rawValue = filteredValues[0].name;
+    const parsed = Number(rawValue);
+
+    if (Number.isNaN(parsed)) {
+      logger.warn(
+        "Failed to parse NUMERIC attribute value as number; dropping attribute from Algolia document",
+        {
+          attributeName: attr.attribute.name,
+          rawValue,
+          productId: context?.productId,
+          variantId: context?.variantId,
+        },
+      );
+
+      return undefined;
+    }
+
+    value = parsed;
+  } else if (filteredValues.length === 1 && filteredValues[0].name) {
+    value = filteredValues[0].name;
+  } else {
+    /**
+     * Fallback to initial/previous behavior
+     * TODO: Its not correct to use "name" field always. E.g. for plaintext field more accurate is "plainText",
+     *   for "date" field there are date and dateTime fields. "Name" can work on the frontend but doesn't fit for faceting
+     */
+    value = filteredValues.map((v) => v.name).filter(isNotNil);
+  }
+
+  return {
+    [attr.attribute.name]: value,
+  } as Record<string, string | boolean | number | string[]>;
+};
+
+export function productAndVariantToAlgolia({
+  variant,
+  channel,
+  enabledKeys,
+  quantityAvailable,
+}: {
+  variant: ProductVariantWebhookPayloadFragment;
+  channel: string;
+  enabledKeys: string[];
+  /**
+   * Channel-scoped quantity, fetched separately for webhooks. Falls back to the payload value,
+   * which is only correct when the source query was channel-scoped (bulk sync).
+   *
+   * @see createVariantsAvailabilityFetcher
+   */
+  quantityAvailable?: number | null;
+}) {
+  const product = variant.product;
+  const loggingContext = { productId: product.id, variantId: variant.id };
+  const attributes = {
+    ...product.attributes.reduce((acc, attr, idx) => {
+      const preparedAttr = mapSelectedAttributesToRecord(attr, loggingContext);
+
+      if (!preparedAttr) {
+        return acc;
+      }
+
+      return {
+        ...acc,
+        ...preparedAttr,
+      };
+    }, {}),
+    ...variant.attributes.reduce((acc, attr, idx) => {
+      const preparedAttr = mapSelectedAttributesToRecord(attr, loggingContext);
+
+      if (!preparedAttr) {
+        return acc;
+      }
+
+      return {
+        ...acc,
+        ...preparedAttr,
+      };
+    }, {}),
+  };
+
+  const listing = variant.channelListings?.find((l) => l.channel.slug === channel);
+
+  /**
+   * When inventory is not tracked, the variant can always be bought, and Saleor resolves
+   * quantityAvailable to the global checkout limit - which is null unless configured.
+   */
+  const inStock = variant.trackInventory
+    ? !!(quantityAvailable === undefined ? variant.quantityAvailable : quantityAvailable)
+    : true;
+
+  const media = variant.product.media?.map((m) => ({ url: m.url, type: m.type })) || [];
+
+  const parentProductPricing = variant.product.channelListings?.find(
+    (listing) => listing.channel.slug === channel,
+  )?.pricing;
+
+  const document = {
+    objectID: productAndVariantToObjectID(variant),
+    productId: product.id,
+    variantId: variant.id,
+    name: `${product.name} - ${variant.name}`,
+    productName: product.name,
+    variantName: variant.name,
+    sku: variant.sku,
+    attributes,
+    media,
+    description: safeParseJson(product.description),
+    descriptionPlaintext: EditorJsPlaintextRenderer({ stringData: product.description ?? "" }),
+    slug: product.slug,
+    productTypeId: product.productType?.id ?? null,
+    productTypeName: product.productType?.name ?? null,
+    categoryId: product.category?.id ?? null,
+    categorySlug: product.category?.slug ?? null,
+    thumbnail: product.thumbnail?.url,
+    /**
+     * Deprecated
+     */
+    grossPrice: listing?.price?.amount,
+    /**
+     * BUG: This will work in bulk-sync, because channel is set in the query.
+     * In webhook (like product_variant_updated) pricing is null, so these fields will be purged in Algolia.
+     *
+     * Need to either add fields to Core (https://github.com/saleor/saleor/issues/14748)
+     * or dynamically fetch missing data
+     */
+    pricing: {
+      price: {
+        net: variant.pricing?.price?.net.amount,
+        gross: variant.pricing?.price?.gross.amount,
+      },
+      onSale: variant.pricing?.onSale,
+      discount: {
+        net: variant.pricing?.discount?.net.amount,
+        gross: variant.pricing?.discount?.gross.amount,
+      },
+      priceUndiscounted: {
+        net: variant.pricing?.priceUndiscounted?.net.amount,
+        gross: variant.pricing?.priceUndiscounted?.gross.amount,
+      },
+    },
+    productPricing: {
+      priceRange: {
+        start: {
+          gross: parentProductPricing?.priceRange?.start?.gross.amount,
+          net: parentProductPricing?.priceRange?.start?.net.amount,
+        },
+        stop: {
+          gross: parentProductPricing?.priceRange?.stop?.gross.amount,
+          net: parentProductPricing?.priceRange?.stop?.net.amount,
+        },
+      },
+      priceRangeUndiscounted: {
+        start: {
+          gross: parentProductPricing?.priceRangeUndiscounted?.start?.gross.amount,
+          net: parentProductPricing?.priceRangeUndiscounted?.start?.net.amount,
+        },
+        stop: {
+          gross: parentProductPricing?.priceRangeUndiscounted?.stop?.gross.amount,
+          net: parentProductPricing?.priceRangeUndiscounted?.stop?.net.amount,
+        },
+      },
+    },
+    inStock,
+    categories: categoryHierarchicalFacets(variant),
+    collections: product.collections?.map((collection) => collection.name) || [],
+    metadata: metadataToAlgoliaAttribute(variant.product.metadata),
+    variantMetadata: metadataToAlgoliaAttribute(variant.metadata),
+    otherVariants:
+      variant.product.variants
+        ?.filter((v) => {
+          // Filter out the current variant
+          if (v.id === variant.id) return false;
+
+          // Filter out variants that don't have channel listings for the current channel
+          return v.channelListings?.some((cl) => cl.channel.slug === channel) ?? false;
+        })
+        .map((v) => v.id) || [],
+  } satisfies Record<AlgoliaRootFields | string, unknown>;
+
+  // todo refactor
+  AlgoliaRootFieldsKeys.forEach((field) => {
+    const enabled = enabledKeys.includes(field);
+
+    if (!enabled) {
+      delete document[field];
+    }
+  });
+
+  return document;
+}
+
+export function productAndVariantToObjectID({
+  product,
+  ...variant
+}: {
+  id: string;
+  product: { id: string };
+}) {
+  return `${product.id}_${variant.id}`;
+}

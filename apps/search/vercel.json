@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/pages/api/webhooks/saleor/**/*": {
+      "memory": 512
+    }
+  },
+  "regions": [
+    "dub1",
+    "iad1"
+  ]
+}

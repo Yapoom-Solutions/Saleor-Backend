@@ -1,0 +1,19 @@
+import { SALEOR_API_URL_HEADER, SALEOR_AUTHORIZATION_BEARER_HEADER } from "@saleor/app-sdk/headers";
+import { type inferAsyncReturnType } from "@trpc/server";
+import type * as trpcNext from "@trpc/server/adapters/next";
+
+import { getBaseUrl } from "../../lib/get-base-url";
+
+export const createTrpcContext = async ({ req }: trpcNext.CreateNextContextOptions) => {
+  const baseUrl = getBaseUrl(req.headers);
+
+  return {
+    token: req.headers[SALEOR_AUTHORIZATION_BEARER_HEADER] as string | undefined,
+    saleorApiUrl: req.headers[SALEOR_API_URL_HEADER] as string | undefined,
+    appId: undefined as undefined | string,
+    ssr: undefined as undefined | boolean,
+    baseUrl,
+  };
+};
+
+export type TrpcContext = inferAsyncReturnType<typeof createTrpcContext>;

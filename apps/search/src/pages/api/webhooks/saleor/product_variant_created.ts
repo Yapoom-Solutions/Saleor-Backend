@@ -1,0 +1,114 @@
+import { type NextJsWebhookHandler } from "@saleor/app-sdk/handlers/next";
+import { wrapWithLoggerContext } from "@saleor/apps-logger/node";
+import { withSpanAttributes } from "@saleor/apps-otel/src/with-span-attributes";
+
+import {
+  AlgoliaErrorParser,
+  createRecordSizeErrorMessage,
+} from "../../../../lib/algolia/algolia-error-parser";
+import { createLogger } from "../../../../lib/logger";
+import { loggerContext } from "../../../../lib/logger-context";
+import { type ProductVariantCreated } from "../../../../lib/webhook-event-types";
+import { createSearchProblemReporter } from "../../../../modules/app-problems";
+import { webhookProductVariantCreated } from "../../../../webhooks/definitions/product-variant-created";
+import { handleAlgoliaWebhookError } from "../../../../webhooks/handle-algolia-webhook-error";
+import { handleInvalidAppIdError } from "../../../../webhooks/handle-invalid-app-id-error";
+import { createWebhookContext } from "../../../../webhooks/webhook-context";
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+const logger = createLogger("webhookProductVariantCreatedWebhookHandler");
+
+export const handler: NextJsWebhookHandler<ProductVariantCreated> = async (req, res, context) => {
+  const { event, authData } = context;
+
+  logger.info(`New event received: ${event} (${context.payload?.__typename})`, {
+    saleorApiUrl: authData.saleorApiUrl,
+  });
+
+  const { productVariant } = context.payload;
+
+  if (!productVariant) {
+    logger.warn("Webhook did not receive expected product data in the payload.");
+
+    return res.status(200).end();
+  }
+
+  try {
+    const { algoliaClient } = await createWebhookContext({ authData });
+
+    try {
+      await algoliaClient.createProductVariant(productVariant);
+
+      res.status(200).end();
+
+      return;
+    } catch (e) {
+      if (AlgoliaErrorParser.isRecordSizeTooBigError(e)) {
+        const errorDetails = AlgoliaErrorParser.parseRecordSizeError(e);
+        const entity = {
+          type: "product_variant" as const,
+          productId: productVariant.product.id,
+          variantId: productVariant.id,
+        };
+        const errorMessage = createRecordSizeErrorMessage(errorDetails, entity);
+
+        // Use warn instead of error - this is an expected error that shouldn't trigger Sentry alerts
+        logger.warn("Product variant exceeds Algolia record size limit", {
+          productId: productVariant.product.id,
+          variantId: productVariant.id,
+          actualSize: errorDetails?.actualSize,
+          maxSize: errorDetails?.maxSize,
+        });
+
+        const problemReporter = createSearchProblemReporter(authData);
+
+        await problemReporter.reportRecordTooLarge(entity);
+
+        return res.status(413).send(errorMessage);
+      }
+
+      if (AlgoliaErrorParser.isAuthError(e)) {
+        const problemReporter = createSearchProblemReporter(authData);
+
+        await problemReporter.reportAuthErrorAndDeactivate(authData.appId);
+
+        return res.status(401).send("Algolia rejected due to invalid credentials");
+      }
+
+      const invalidAppIdResponse = await handleInvalidAppIdError({
+        error: e,
+        authData,
+        res,
+        logger,
+      });
+
+      if (invalidAppIdResponse) {
+        return;
+      }
+
+      return handleAlgoliaWebhookError({
+        error: e,
+        logger,
+        message:
+          "Failed to execute product_variant_created webhook (algoliaClient.createProductVariant)",
+        res,
+      });
+    }
+  } catch (e) {
+    logger.error("Failed to execute product_variant_created webhook (createWebhookContext)", {
+      error: e,
+    });
+
+    return res.status(400).send((e as Error).message);
+  }
+};
+
+export default wrapWithLoggerContext(
+  withSpanAttributes(webhookProductVariantCreated.createHandler(handler)),
+  loggerContext,
+);

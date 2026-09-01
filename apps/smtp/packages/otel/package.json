@@ -1,0 +1,48 @@
+{
+  "name": "@saleor/apps-otel",
+  "version": "2.4.1",
+  "type": "module",
+  "scripts": {
+    "check-types": "tsc",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "test": "vitest",
+    "test:ci": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@opentelemetry/exporter-metrics-otlp-http": "catalog:",
+    "@opentelemetry/exporter-trace-otlp-http": "catalog:",
+    "@opentelemetry/instrumentation-aws-sdk": "catalog:",
+    "@opentelemetry/instrumentation-http": "catalog:",
+    "@opentelemetry/sdk-trace-node": "catalog:",
+    "@opentelemetry/semantic-conventions": "catalog:",
+    "@saleor/sentry-utils": "workspace:*",
+    "uuid": "11.0.4"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/sdk-metrics": "catalog:",
+    "@opentelemetry/sdk-trace-node": "catalog:",
+    "@opentelemetry/semantic-conventions": "catalog:",
+    "@saleor/app-sdk": "link:../../node_modules/@saleor/app-sdk",
+    "@saleor/eslint-config-apps": "workspace:*",
+    "@saleor/typescript-config-apps": "workspace:*",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "next": "catalog:",
+    "typescript": "catalog:",
+    "urql": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/sdk-metrics": "catalog:",
+    "@opentelemetry/sdk-trace-node": "catalog:",
+    "@opentelemetry/semantic-conventions": "catalog:",
+    "@saleor/app-sdk": "catalog:",
+    "@sentry/nextjs": "catalog:",
+    "next": "catalog:",
+    "urql": "catalog:"
+  }
+}
