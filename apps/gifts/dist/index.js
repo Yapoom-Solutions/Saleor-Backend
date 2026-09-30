@@ -14,6 +14,9 @@ app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 const PORT = process.env.PORT || 8082;
 function getAppUrl(req) {
+    if (process.env.APP_URL) {
+        return process.env.APP_URL;
+    }
     const host = req.get("host") || `localhost:${PORT}`;
     const proto = req.get("x-forwarded-proto") || "http";
     return `${proto}://${host}`;
@@ -98,7 +101,18 @@ app.post("/api/register", async (req, res) => {
 });
 // 3. GET /configuration (serves the admin settings HTML page)
 app.get("/configuration", (req, res) => {
-    res.sendFile(path_1.default.resolve(__dirname, "../public/configuration.html"));
+    const possiblePaths = [
+        path_1.default.resolve(__dirname, "../public/configuration.html"),
+        path_1.default.resolve(__dirname, "./public/configuration.html"),
+        path_1.default.resolve(__dirname, "../src/public/configuration.html")
+    ];
+    const filePath = possiblePaths.find((p) => fs_1.default.existsSync(p));
+    if (filePath) {
+        res.sendFile(filePath);
+    }
+    else {
+        res.status(404).send("Configuration page not found");
+    }
 });
 // 4. GET /api/configuration (retrieves current keys/limits & customization list)
 app.get("/api/configuration", async (req, res) => {
@@ -215,28 +229,53 @@ app.post("/api/webhooks/order-created", async (req, res) => {
         res.status(500).json({ error: err.message || "Failed to process webhook" });
     }
 });
-// 8. GET /api/customizations/:id/download (streams file directly from shared media volume)
+// 8. GET /api/customizations/:id/preview (serves image/media inline for browser viewing)
+app.get("/api/customizations/:id/preview", async (req, res) => {
+    const id = req.params.id;
+    try {
+        const record = await (0, db_1.getCustomization)(id);
+        if (!record) {
+            return res.status(404).send("File customization record not found");
+        }
+        const filePath = record.file_path || (record.file_url ? (0, storage_1.getFilePathFromUrl)(record.file_url) : null);
+        if (filePath && fs_1.default.existsSync(filePath)) {
+            return res.sendFile(filePath);
+        }
+        if (record.file_url) {
+            return res.redirect(record.file_url);
+        }
+        return res.status(404).send("File no longer exists on server storage");
+    }
+    catch (err) {
+        console.error("File preview error:", err);
+        res.status(500).send("Error loading preview");
+    }
+});
+// 9. GET /api/customizations/:id/download (streams file directly from shared media volume as attachment)
 app.get("/api/customizations/:id/download", async (req, res) => {
     const id = req.params.id;
     try {
         const record = await (0, db_1.getCustomization)(id);
-        if (!record || !record.file_path) {
+        if (!record) {
             return res.status(404).send("File customization record not found");
         }
-        const filePath = record.file_path;
-        if (!fs_1.default.existsSync(filePath)) {
-            return res.status(404).send("File no longer exists on server storage");
+        const filePath = record.file_path || (record.file_url ? (0, storage_1.getFilePathFromUrl)(record.file_url) : null);
+        if (filePath && fs_1.default.existsSync(filePath)) {
+            const filename = path_1.default.basename(filePath);
+            res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+            return res.sendFile(filePath);
         }
-        const filename = path_1.default.basename(filePath);
-        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        res.sendFile(filePath);
+        if (record.file_url) {
+            return res.redirect(record.file_url);
+        }
+        return res.status(404).send("File no longer exists on server storage");
     }
     catch (err) {
         console.error("File download error:", err);
         res.status(500).send("Error reading file");
     }
 });
-// 9. DELETE /api/customizations/:id/file (unlinks file on shared volume and updates quota count)
+// 10. DELETE /api/customizations/:id/file (unlinks file on shared volume and updates quota count)
 app.delete("/api/customizations/:id/file", async (req, res) => {
     const id = req.params.id;
     try {
